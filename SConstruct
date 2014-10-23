@@ -68,7 +68,7 @@ vars.AddVariables(
     )
 
 # initialize logging system
-logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%Y-%m-%d %H:%M:%S', level=logging.INFO)
+logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%Y-%m-%d %H:%M:%S', level=logging.DEBUG)
 
 # initialize build environment
 env = Environment(variables=vars, ENV=os.environ, TARFLAGS="-c -z", TARSUFFIX=".tgz",
@@ -104,18 +104,24 @@ for language, properties in env["LANGUAGES"].iteritems():
         very_limited_data = env.StmToData("work/very_limited_data/${LANGUAGE}.xml.gz", 
                                           ["${BABEL_DATA_PATH}/LPDefs.20141006.tgz", env.Value(".*IARPA-babel%d.*VLLP.training.transcribed.stm" % babel_id)])
 
-    arguments = Value({"MODEL" : "morphology",
-                       "LANGUAGE" : language,
-                       "HAS_PREFIXES" : properties.get("HAS_PREFIXES", True),
-                       "HAS_SUFFIXES" : properties.get("HAS_SUFFIXES", True),
-                   })
-
     has_morphology = os.path.exists(env.subst("data/${LANGUAGE}_morphology.txt"))
     if has_morphology:
         training = env.AddMorphology("work/data/${LANGUAGE}/train_morph.xml.gz", [very_limited_data, "data/${LANGUAGE}_morphology.txt"])
 
-    cfg, data = env.MorphologyCFG(["work/models/${LANGUAGE}_VLLP_model.txt", "work/models/${LANGUAGE}_VLLP_data.txt"], [very_limited_data, arguments])
-    parses, grammar, trace_file = env.RunPYCFG([cfg, data, arguments])
+    for has_prefixes in [True, False]:
+        for has_suffixes in [True, False]:
+            arguments = Value({"MODEL" : "morphology",
+                               "LANGUAGE" : language,
+                               "HAS_PREFIXES" : has_prefixes,
+                               "HAS_SUFFIXES" : has_suffixes,
+                               })
+
+
+
+            cfg, data = env.MorphologyCFG(["work/models/${LANGUAGE}_VLLP_model_pre=%s_suf=%s.txt" % (has_prefixes, has_suffixes), 
+                                           "work/models/${LANGUAGE}_VLLP_data_pre=%s_suf=%s.txt" % (has_prefixes, has_suffixes)], 
+                                          [very_limited_data, arguments])
+            parses, grammar, trace_file = env.RunPYCFG([cfg, data, arguments])
 
     #if has_morphology:                
     #    results = getattr(env, "EvaluateMorphology")(parses, training, "data/${LANGUAGE}_morphology.txt")

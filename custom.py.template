@@ -1,89 +1,89 @@
-LOCAL_PATH = "/home/tom/local"
-NUM_ITERATIONS = 10
-NUM_SAMPLES = 1
-INDUSDB_PATH = "/home/tom/IndusDB.20140807"
-NUM_TAGS = 17
-LANGUAGE_PACK_PATH = "/home/tom/projects/babel_data/language_packs"
-PYCFG_PATH = "/home/tom/py-cfg"
-HAS_TORQUE = True
-ANNEAL_INITIAL = 3
-ANNEAL_FINAL = 1
-ANNEAL_ITERATIONS = NUM_ITERATIONS / 4
-MAXIMUM_SENTENCE_LENGTH = 20
-BABEL_DATA_PATH = "/home/tom/projects/babel_data"
+# LOCAL_PATH = "/home/tom/local"
+# NUM_ITERATIONS = 10
+# NUM_SAMPLES = 1
+# INDUSDB_PATH = "/home/tom/IndusDB.20140807"
+# NUM_TAGS = 17
+# LANGUAGE_PACK_PATH = "/vega/ccls/projects/babel/stripped_language_packs"
+# PYCFG_PATH = "/home/tom/py-cfg"
+# HAS_TORQUE = True
+# ANNEAL_INITIAL = 3
+# ANNEAL_FINAL = 1
+# ANNEAL_ITERATIONS = NUM_ITERATIONS / 4
+# MAXIMUM_SENTENCE_LENGTH = 20
+# BABEL_DATA_PATH = "/home/tom/projects/babel_data"
 
-LANGUAGES = {
-    #"german" : {},
-    #"hebrew" : {},
-    "english" : {
-        "HAS_PREFIXES" : False,
-        "HAS_SUFFIXES" : True,
-        #"BABEL_ID" : 001,
-    },
-    #"arabic" : {
-        #"BABEL_ID" : 002,
-    #},
-    "mandarin" : {
-        #"BABEL_ID" : 003,
-    },
-    "cantonese" : {
-        "BABEL_ID" : 101,
-    },
-    "assamese" : {
-        "BABEL_ID" : 102,
-    },
-    "bengali" : {
-        "BABEL_ID" : 103,
-    },
-    "pashto" : {
-        "BABEL_ID" : 104,
-    },
-    "turkish" : {
-        "HAS_PREFIXES" : False,
-        "HAS_SUFFIXES" : True,
-        "BABEL_ID" : 105,
-    },
-    "tagalog" : {
-        "BABEL_ID" : 106,
-    },
-    "vietnamese" : {
-        "BABEL_ID" : 107,
-    },
-    "haitian_creole" : {
-        "BABEL_ID" : 201,
-    },
-    #"lao" : {
-    #    "BABEL_ID" : 203,
-    #},
-    #"tamil" : {
-    #    "BABEL_ID" : 204,
-    #},
-    "kurmanji" : {
-        "BABEL_ID" : 205,
-    },
-    "zulu" : {
-        "HAS_PREFIXES" : True,
-        "HAS_SUFFIXES" : True,
-        "BABEL_ID" : 206,
-    },
-    "tok_pisin" : {
-        "BABEL_ID" : 207,
-        "VLLP" : True,
-    },
-    "cebuano" : {
-        "BABEL_ID" : 301,
-        "VLLP" : True,
-    },
-    "kazakh" : {
-        "BABEL_ID" : 302,
-        "VLLP" : True,
-    },
-    "telugu" : {
-        "BABEL_ID" : 303,
-        "VLLP" : True,
-    },
-    "lithuanian" : {
-        "BABEL_ID" : 304,
-        "VLLP" : True,
-    },
-}
+# LANGUAGES = {
+#     #"german" : {},
+#     #"hebrew" : {},
+#     "english" : {
+#         "HAS_PREFIXES" : False,
+#         "HAS_SUFFIXES" : True,
+#         #"BABEL_ID" : 001,
+#     },
+#     #"arabic" : {
+#         #"BABEL_ID" : 002,
+#     #},
+#     "mandarin" : {
+#         #"BABEL_ID" : 003,
+#     },
+#     "cantonese" : {
+#         "BABEL_ID" : 101,
+#     },
+#     "assamese" : {
+#         "BABEL_ID" : 102,
+#     },
+#     "bengali" : {
+#         "BABEL_ID" : 103,
+#     },
+#     "pashto" : {
+#         "BABEL_ID" : 104,
+#     },
+#     "turkish" : {
+#         "HAS_PREFIXES" : False,
+#         "HAS_SUFFIXES" : True,
+#         "BABEL_ID" : 105,
+#     },
+#     "tagalog" : {
+#         "BABEL_ID" : 106,
+#     },
+#     "vietnamese" : {
+#         "BABEL_ID" : 107,
+#     },
+#     "haitian_creole" : {
+#         "BABEL_ID" : 201,
+#     },
+#     #"lao" : {
+#     #    "BABEL_ID" : 203,
+#     #},
+#     #"tamil" : {
+#     #    "BABEL_ID" : 204,
+#     #},
+#     "kurmanji" : {
+#         "BABEL_ID" : 205,
+#     },
+#     "zulu" : {
+#         "HAS_PREFIXES" : True,
+#         "HAS_SUFFIXES" : True,
+#         "BABEL_ID" : 206,
+#     },
+#     "tok_pisin" : {
+#         "BABEL_ID" : 207,
+#         "VLLP" : True,
+#     },
+#     "cebuano" : {
+#         "BABEL_ID" : 301,
+#         "VLLP" : True,
+#     },
+#     "kazakh" : {
+#         "BABEL_ID" : 302,
+#         "VLLP" : True,
+#     },
+#     "telugu" : {
+#         "BABEL_ID" : 303,
+#         "VLLP" : True,
+#     },
+#     "lithuanian" : {
+#         "BABEL_ID" : 304,
+#         "VLLP" : True,
+#     },
+# }
