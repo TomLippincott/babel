@@ -94,7 +94,7 @@ above.
 ################################################################################
 
 # Please state executable and path of lp_solve !!!
-_lpSolvePath = "/usr/bin/lp_solve" #"/share/morpho/rd/morfessor2005/evaluation/emma/bin/lp_solve"
+_lpSolvePath = "/vega/ccls/users/tml2115/lp_solve/lp_solve" #"/share/morpho/rd/morfessor2005/evaluation/emma/bin/lp_solve"
 
 
 ################################################################################

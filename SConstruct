@@ -123,5 +123,5 @@ for language, properties in env["LANGUAGES"].iteritems():
                                           [very_limited_data, arguments])
             parses, grammar, trace_file = env.RunPYCFG([cfg, data, arguments])
 
-    #if has_morphology:                
-    #    results = getattr(env, "EvaluateMorphology")(parses, training, "data/${LANGUAGE}_morphology.txt")
+            if has_morphology:                
+                results = getattr(env, "EvaluateMorphology")(parses, training, "data/${LANGUAGE}_morphology.txt")
