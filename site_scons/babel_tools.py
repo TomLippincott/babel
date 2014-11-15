@@ -100,15 +100,39 @@ def rtm_to_data(target, source, env):
     return None
 
 def extract_transcripts(target, source, env):
+    args = source[-1].read()
     data = {}    
     tb = et.TreeBuilder()
     tb.start("xml", {})
     with tarfile.open(source[0].rstr()) as tf:
-        for name in [n for n in tf.getnames() if re.match(r".*transcription.*\.txt", n)]:
+        for name in [n for n in tf.getnames() if re.match(args.get("PATTERN", r".*transcription.*\.txt"), n)]:
             text = tf.extractfile(name).read()
             try:
                 tb.start("file", {"name" : name})
                 tb.data(text.decode("utf-8"))
+                tb.end("file")        
+            except:
+                print name, text
+                raise
+    tb.end("xml")
+    with meta_open(target[0].rstr(), "w") as ofd:
+        ofd.write(et.tostring(tb.close()))
+    return None
+
+def penn_to_transcripts(target, source, env):
+    args = source[-1].read()
+    data = {}    
+    tb = et.TreeBuilder()
+    tb.start("xml", {})
+    with tarfile.open(source[0].rstr()) as tf:
+        for name in [n for n in tf.getnames() if re.match(args.get("PATTERN", r".*parsed/mrg/wsj/.*mrg"), n)]:
+            text = tf.extractfile(name).read()
+            try:
+                tb.start("file", {"name" : name})
+                for sentence in text.split("(S "):
+                    words = [m.group(1) for m in re.finditer(r"\(\S+ (\S+)\)", sentence)]
+                    if len(words) > 0:
+                        tb.data(" ".join(words) + "\n")
                 tb.end("file")        
             except:
                 print name, text
@@ -170,12 +194,13 @@ def generate_data_subset(target, source, env):
 
 def TOOLS_ADD(env):
     env.Append(BUILDERS = {
+        "PennToTranscripts" : Builder(action=penn_to_transcripts),
         "GenerateDataSubset" : Builder(action=generate_data_subset),
         "StmToData" : Builder(action=stm_to_data),
         "ExtractTranscripts" : Builder(action=extract_transcripts),
         "TranscriptsToData" : Builder(action=transcripts_to_data),
         "CONLLishToXML" : Builder(action=conllish_to_xml),
-        "CollateResults" : Builder(action=collate_results),
+        #"CollateResults" : Builder(action=collate_results),
         "TopWordsByTag" : Builder(action=top_words_by_tag),
         "RtmToData" : Builder(action=rtm_to_data),
     })

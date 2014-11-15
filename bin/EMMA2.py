@@ -94,7 +94,7 @@ above.
 ################################################################################
 
 # Please state executable and path of lp_solve !!!
-_lpSolvePath = "/usr/bin/lp_solve" #"/share/morpho/rd/morfessor2005/evaluation/emma/bin/lp_solve"
+#_lpSolvePath = "/usr/bin/lp_solve" #"/share/morpho/rd/morfessor2005/evaluation/emma/bin/lp_solve"
 
 
 ################################################################################
@@ -684,8 +684,10 @@ if __name__ == "__main__":
     parser.add_option("-v", "--verbose", action="store_true", dest="verbose", help="verbose, prints out all information")
     parser.add_option("-s", "--short", action="store_true", dest="short", help="short result, prints precision, recall, f-measure separated by tab")
     parser.add_option("-1", "--onetoone", action="store_false", default=True, dest="onetomany", help="Force one-to-one mapping between morphs")
-
+    parser.add_option("-L", "--lp_solve", default="/usr/bin/lp_solve", dest="lp_solve", help="path to lp_solve binary")
     (options, args) = parser.parse_args()
+    
+    _lpSolvePath = options.lp_solve
     if options.goldFile and options.predFile:
         goldFile=options.goldFile
         predFile=options.predFile
