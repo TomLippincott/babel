@@ -120,7 +120,7 @@ for language, properties in env["LANGUAGES"].iteritems():
 
     for has_prefixes in [True, False]:
         for has_suffixes in [True, False]:
-<<<<<<< HEAD
+
             for is_agglutinative in [True, False]:
                 for name, train, train_morph in [
                         ("VLLP", very_limited_data, very_limited_data_morph),
@@ -153,20 +153,3 @@ for language, properties in env["LANGUAGES"].iteritems():
         results.append(env.RunEMMA([guess, gold, Value({"LANGUAGE" : "$LANGUAGE", "MODEL" : "MORFESSOR", "DATA" : name})]))
         
 env.CollateResults("work/results.txt", results)
-=======
-            arguments = Value({"MODEL" : "morphology",
-                               "LANGUAGE" : language,
-                               "HAS_PREFIXES" : has_prefixes,
-                               "HAS_SUFFIXES" : has_suffixes,
-                               })
-
-
-
-            cfg, data = env.MorphologyCFG(["work/models/${LANGUAGE}_VLLP_model_pre=%s_suf=%s.txt" % (has_prefixes, has_suffixes), 
-                                           "work/models/${LANGUAGE}_VLLP_data_pre=%s_suf=%s.txt" % (has_prefixes, has_suffixes)], 
-                                          [very_limited_data, arguments])
-            parses, grammar, trace_file = env.RunPYCFG([cfg, data, arguments])
-
-            if has_morphology:                
-                results = getattr(env, "EvaluateMorphology")(parses, training, "data/${LANGUAGE}_morphology.txt")
->>>>>>> 11fe2a3a633b19b9bfd048fd50a00e2901384715

@@ -94,11 +94,11 @@ above.
 ################################################################################
 
 # Please state executable and path of lp_solve !!!
-<<<<<<< HEAD
+#<<<<<<< HEAD
 #_lpSolvePath = "/usr/bin/lp_solve" #"/share/morpho/rd/morfessor2005/evaluation/emma/bin/lp_solve"
-=======
-_lpSolvePath = "/vega/ccls/users/tml2115/lp_solve/lp_solve" #"/share/morpho/rd/morfessor2005/evaluation/emma/bin/lp_solve"
->>>>>>> 11fe2a3a633b19b9bfd048fd50a00e2901384715
+#=======
+#_lpSolvePath = "/vega/ccls/users/tml2115/lp_solve/lp_solve" #"/share/morpho/rd/morfessor2005/evaluation/emma/bin/lp_solve"
+#>>>>>>> 11fe2a3a633b19b9bfd048fd50a00e2901384715
 
 
 ################################################################################
