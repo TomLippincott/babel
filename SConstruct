@@ -106,87 +106,45 @@ for language, properties in env["LANGUAGES"].iteritems():
         
         full_data = env.TranscriptsToData("work/full_data/${LANGUAGE}.xml.gz", [full_transcripts, Value({})])
 
-    if properties.get("VLLP", False):
-        very_limited_data = env.StmToData("work/very_limited_data/${LANGUAGE}.xml.gz", 
-                                          ["${BABEL_DATA_PATH}/LPDefs.20141006.tgz", env.Value(".*IARPA-babel%d.*VLLP.training.transcribed.stm" % babel_id)])
-    else:
-        very_limited_data = env.GenerateDataSubset("work/very_limited_data/${LANGUAGE}.xml.gz", [full_data, Value({"RANDOM" : True, "WORDS" : 30000})])
-    
+    for run in range(1, 10):
+        env.Replace(RUN=str(run))
+        if properties.get("VLLP", False):
+            very_limited_data = env.StmToData("work/very_limited_data/${LANGUAGE}_${RUN}.xml.gz", 
+                                              ["${BABEL_DATA_PATH}/LPDefs.20141006.tgz", env.Value(".*IARPA-babel%d.*VLLP.training.transcribed.stm" % babel_id)])
+        else:
+            very_limited_data = env.GenerateDataSubset("work/very_limited_data/${LANGUAGE}_${RUN}.xml.gz", [full_data, Value({"RANDOM" : True, "WORDS" : 30000})])
 
-    has_morphology = os.path.exists(env.subst("data/${LANGUAGE}_morphology.txt"))
-    if has_morphology:
-        very_limited_data_morph = env.AddMorphology("work/data/${LANGUAGE}/very_limited_morph.xml.gz", [very_limited_data, "data/${LANGUAGE}_morphology.txt"])
-        limited_data_morph = env.AddMorphology("work/data/${LANGUAGE}/limited_morph.xml.gz", [limited_data, "data/${LANGUAGE}_morphology.txt"])
+        has_morphology = os.path.exists(env.subst("data/${LANGUAGE}_morphology.txt"))
+        if has_morphology:
+            very_limited_data_morph = env.AddMorphology("work/data/${LANGUAGE}/very_limited_morph_${RUN}.xml.gz", [very_limited_data, "data/${LANGUAGE}_morphology.txt"])
+            limited_data_morph = env.AddMorphology("work/data/${LANGUAGE}/limited_morph_${RUN}.xml.gz", [limited_data, "data/${LANGUAGE}_morphology.txt"])
 
-    template = env.File("data/grammar_templates/${LANGUAGE}.txt")
-    characters = env.CharacterProductions("work/character_productions/${LANGUAGE}.txt", very_limited_data)
-    data = env.MorphologyData("work/ag_data/${LANGUAGE}.txt", very_limited_data)
+        template = env.File("data/grammar_templates/${LANGUAGE}.txt")
+        characters = env.CharacterProductions("work/character_productions/${LANGUAGE}_${RUN}.txt", very_limited_data)
+        data = env.MorphologyData("work/ag_data/${LANGUAGE}_${RUN}.txt", very_limited_data)
 
-    arguments = Value({"LANGUAGE" : language, "SSN" : "None"})
-    cfg = env.ComposeGrammars("work/ag_models/${LANGUAGE}_plain.txt", [template, characters])
-    parses, grammar, trace_file = env.RunPYCFG([cfg, data, arguments])
-    py = env.MorphologyOutputToEMMA([parses, arguments])                        
-    guess, gold = env.PrepareDatasetsForEMMA([py, very_limited_data_morph, arguments])                                                                 
-    results.append(env.RunEMMA([guess, gold, arguments]))
-
-    for ssn in env.Glob("data/grammar_fragments/${LANGUAGE}_*.txt"):
-        stem = re.match(r"^%s_(.*).txt$" % language, os.path.basename(ssn.rstr())).groups()[0]
-        arguments = Value({"LANGUAGE" : language,
-                           "SSN" : stem,
-                       })
-        cfg = env.ComposeGrammars("work/ag_models/${LANGUAGE}_%s.txt" % stem, [template, ssn, characters])
+        arguments = Value({"LANGUAGE" : language, "SSN" : "None", "RUN" : str(run)})
+        cfg = env.ComposeGrammars("work/ag_models/${LANGUAGE}_${RUN}_plain.txt", [template, characters])
         parses, grammar, trace_file = env.RunPYCFG([cfg, data, arguments])
         py = env.MorphologyOutputToEMMA([parses, arguments])                        
         guess, gold = env.PrepareDatasetsForEMMA([py, very_limited_data_morph, arguments])                                                                 
         results.append(env.RunEMMA([guess, gold, arguments]))
 
-    # continue
-    # for has_prefixes in [True, False]:
-    #     for has_suffixes in [True, False]:
+        for ssn in env.Glob("data/grammar_fragments/${LANGUAGE}_*.txt"):
+            stem = re.match(r"^%s_(.*).txt$" % language, os.path.basename(ssn.rstr())).groups()[0]
+            arguments = Value({"LANGUAGE" : language,
+                               "SSN" : stem,
+                               "RUN" : str(run),
+                           })
+            cfg = env.ComposeGrammars("work/ag_models/${LANGUAGE}_${RUN}_%s.txt" % stem, [template, ssn, characters])
+            parses, grammar, trace_file = env.RunPYCFG([cfg, data, arguments])
+            py = env.MorphologyOutputToEMMA([parses, arguments])                        
+            guess, gold = env.PrepareDatasetsForEMMA([py, very_limited_data_morph, arguments])                                                                 
+            results.append(env.RunEMMA([guess, gold, arguments]))
 
-    #         for is_agglutinative in [True, False]:
-    #             for name, train, train_morph in [
-    #                     ("VLLP", very_limited_data, very_limited_data_morph),
-    #                     #("LLP", limited_data, limited_data_morph)
-    #             ]:
-    #                 arguments = Value({"MODEL" : "morphology",
-    #                                    "DATA" : name,
-    #                                    "LANGUAGE" : language,
-    #                                    "HAS_PREFIXES" : has_prefixes,
-    #                                    "HAS_SUFFIXES" : has_suffixes,
-    #                                    "IS_AGGLUTINATIVE" : is_agglutinative,
-    #                                    "LOWER_CASE_MORPHOLOGY" : True,
-    #                                    "TYPE_BASED" : True,
-    #                                })
-    #                 if not all([arguments.read()[x] == properties[x] for x in ["HAS_PREFIXES", "HAS_SUFFIXES", "IS_AGGLUTINATIVE"]]):
-    #                     continue
-
-    #                 cfg, data = env.MorphologyCFG([train, arguments])
-                    
-    #                 if language == "turkish":
-    #                     stem = "%s_%s_%s" % (has_prefixes, has_suffixes, name)
-    #                     parses, grammar, trace_file = env.RunPYCFG(["data/turkish_with_nizar_no_morph.txt", data, arguments])
-    #                     py = env.MorphologyOutputToEMMA("work/ag_output/${LANGUAGE}_%s.txt" % stem, [parses, arguments])
-                        
-    #                     guess, gold = env.PrepareDatasetsForEMMA([py, very_limited_data_morph, arguments])
-                                                                 
-    #                     results.append(env.RunEMMA([guess, gold, arguments]))
-    #                 continue
-
-
-    #                 parses, grammar, trace_file = env.RunPYCFG([cfg, data, arguments])
-
-    #                 if has_morphology:
-    #                     stem = "%s_%s_%s" % (has_prefixes, has_suffixes, name)
-    #                     py = env.MorphologyOutputToEMMA("work/ag_output/${LANGUAGE}_%s.txt" % stem, [parses, arguments])
-                        
-    #                     guess, gold = env.PrepareDatasetsForEMMA([py, very_limited_data_morph, arguments])
-                                                                 
-    #                     results.append(env.RunEMMA([guess, gold, arguments]))
-
-    morfessor = env.TrainMorfessor("work/morfessor/${LANGUAGE}.xml.gz", very_limited_data_morph)        
-    if has_morphology:
-        guess, gold = env.PrepareDatasetsForEMMA([morfessor, very_limited_data_morph, Value({"LANGUAGE" : "$LANGUAGE", "MODEL" : "MORFESSOR"})])
-        results.append(env.RunEMMA([guess, gold, Value({"LANGUAGE" : "$LANGUAGE", "MODEL" : "MORFESSOR"})]))
+        morfessor = env.TrainMorfessor("work/morfessor/${LANGUAGE}_${RUN}.xml.gz", very_limited_data_morph)        
+        if has_morphology:
+            guess, gold = env.PrepareDatasetsForEMMA([morfessor, very_limited_data_morph, Value({"LANGUAGE" : "$LANGUAGE", "MODEL" : "MORFESSOR", "RUN" : str(run)})])
+            results.append(env.RunEMMA([guess, gold, Value({"LANGUAGE" : "$LANGUAGE", "MODEL" : "MORFESSOR", "RUN" : str(run)})]))
         
 env.CollateResults("work/results.txt", results)
