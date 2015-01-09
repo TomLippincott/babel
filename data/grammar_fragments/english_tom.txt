@@ -1,1 +1,0 @@
-KnownSuffix --> ing|ed|er|s

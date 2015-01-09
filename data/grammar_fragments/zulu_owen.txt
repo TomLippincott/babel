@@ -1,3 +1,0 @@
-0 1 KnownSuffix --> a|u|ngi|si|ni|ba|nga|kazi|ana|anyana|yo|phi|anga|e|i
-0 1 KnownPrefix --> um|umu|i|isi|im|u|aba|imi|ama|izi|izim
-
