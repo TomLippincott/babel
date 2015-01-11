@@ -824,4 +824,4 @@ def TOOLS_ADD(env):
         "SegmentTranscripts" : Builder(action=segment_transcripts),
     })
     #env.AddMethod(run_asr, "RunASR")
-    env.AddMethod(run_kws, "RunKWS")
+    #env.AddMethod(run_kws, "RunKWS")
