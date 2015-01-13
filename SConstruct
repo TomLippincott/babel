@@ -134,7 +134,7 @@ vars.AddVariables(
     ("KWSEVALPL", "", "${F4DE}/KWSEval/tools/KWSEval/KWSEval.pl"),    
 
     # all configuration information for ASR
-    ("JOB_COUNT", "", 500),
+    ("JOB_COUNT", "", 9),
     ("JOB_ID", "", 0),
     
     ("MODEL_PATH", "", "${IBM_MODELS}/${BABEL_ID}/LLP/models"),
