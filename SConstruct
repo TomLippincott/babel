@@ -37,7 +37,8 @@ vars.AddVariables(
     ("STRIPPED_LANGUAGE_PACK_PATH", "", None),
     ("BABEL_DATA_PATH", "", None),
     ("RUNS", "", 1),
-    
+    ("TORQUE_INTERVAL", "", 60),
+
     ("INDUSDB_PATH", "", None),
 
     ("CABAL", "", "/home/tom/.cabal"),
@@ -91,7 +92,7 @@ vars.AddVariables(
     # these variables define the locations of various tools and data
     ("BASE_PATH", "", None),
     ("OVERLAY", "", "${BASE_PATH}/local"),
-    ("LANGUAGE_PACKS", "", "${BASE_PATH}/language_transcripts"),
+    #("LANGUAGE_PACKS", "", "${BASE_PATH}/language_transcripts"),
     ("IBM_MODELS", "", "${BASE_PATH}/ibm_models"),
     ("LORELEI_SVN", "", "${BASE_PATH}/lorelei_svn"),
     ("ATTILA_PATH", "", "${BASE_PATH}/VT-2-5-babel"),
@@ -160,7 +161,7 @@ vars.AddVariables(
     ("CTM_PATH", "", "${OUTPUT_PATH}/ctm"),
     ("LATTICE_PATH", "", "${OUTPUT_PATH}/lat"),
     ("TEXT_PATH", "", "${OUTPUT_PATH}/text"),
-    ("PCM_PATH", "", "${BABEL_DATA_PATH}/language_packs/${BABEL_ID}"),
+    ("PCM_PATH", "", "${LANGUAGE_PACK_PATH}/${BABEL_ID}"),
     # ("TRFS_FILE", "", "${MODEL_PATH}/phoneset"),
     # ("TR_FILE", "", "${MODEL_PATH}/phoneset"),
     # ("CTX_FILE", "", "${MODEL_PATH}/phoneset"),
@@ -242,8 +243,8 @@ for language, properties in env["LANGUAGES"].iteritems():
     #    limited_data = env.GenerateDataSubset("work/training_data/${LANGUAGE}.xml.gz", [full_data, Value({"RANDOM" : True, "WORDS" : 100000})])
 
     #elif os.path.exists(env.subst("${LANGUAGE_PACK_PATH}/${BABEL_ID}.tgz")):
-    full_transcripts = env.ExtractTranscripts("work/full_transcripts/${LANGUAGE_NAME}.xml.gz", ["${LANGUAGE_PACK_PATH}/${BABEL_ID}.tgz", Value({})])
-    limited_transcripts = env.ExtractTranscripts("work/training_transcripts/${LANGUAGE_NAME}_training.xml.gz", ["${LANGUAGE_PACK_PATH}/${BABEL_ID}.tgz",
+    full_transcripts = env.ExtractTranscripts("work/full_transcripts/${LANGUAGE_NAME}.xml.gz", ["${STRIPPED_LANGUAGE_PACK_PATH}/${BABEL_ID}.tgz", Value({})])
+    limited_transcripts = env.ExtractTranscripts("work/training_transcripts/${LANGUAGE_NAME}_training.xml.gz", ["${STRIPPED_LANGUAGE_PACK_PATH}/${BABEL_ID}.tgz",
                                                                                                                 Value({"PATTERN" : r".*sub-train.*transcription.*txt"})])
     limited_data = env.TranscriptsToData("work/training_data/${LANGUAGE_NAME}.xml.gz", [limited_transcripts, Value({})])
         
