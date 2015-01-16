@@ -252,8 +252,8 @@ for language, properties in env["LANGUAGES"].iteritems():
 
 
     morfessor, morfessor_model = env.TrainMorfessor(["work/morfessor/${LANGUAGE_NAME}.xml.gz", "work/morfessor/${LANGUAGE_NAME}.model"], limited_data)
-    terms = env.Glob("${INDUSDB_PATH}/IARPA-babel${BABEL_ID}*-dev.kwlist*.xml")
-    segmented_terms = env.ApplyMorfessor(["work/segmented_terms/${LANGUAGE_NAME}.txt"], [morfessor_model] + terms)
+    terms = env.Glob("${INDUSDB_PATH}/IARPA-babel${BABEL_ID}*-dev.kwlist*.xml")[0]
+    segmented_terms = env.ApplyMorfessor(["work/segmented_terms/${LANGUAGE_NAME}.txt"], [morfessor_model, terms])
     
     segmented_pronunciations_training, morphs = env.SegmentedPronunciations(["work/pronunciations/${LANGUAGE_NAME}_segmented.txt",
                                                                              "work/pronunciations/${LANGUAGE_NAME}_morphs.txt"], [pronunciations_file, morfessor])
@@ -282,7 +282,9 @@ for language, properties in env["LANGUAGES"].iteritems():
     baseline_pronunciations = env.File("${IBM_MODELS}/${BABEL_ID}/LLP/models/dict.test")
     baseline_language_model = env.File("${IBM_MODELS}/${BABEL_ID}/LLP/models/lm.2gm.arpabo.gz")
 
-    asr_output = env.RunASR("work/asr_experiments/${LANGUAGE_NAME}/baseline", baseline_vocabulary, baseline_pronunciations, baseline_language_model)
+    baseline_asr_output = env.RunASR("work/asr_experiments/${LANGUAGE_NAME}/baseline", baseline_vocabulary, baseline_pronunciations, baseline_language_model)
+
+    morfessor_asr_output = env.RunASR("work/asr_experiments/${LANGUAGE_NAME}/morfessor", segmented_vocabulary, segmented_pronunciations, segmented_language_model)
     #kws_output = env.RunKWS("work/kws_experiments/${LANGUAGE_NAME}/baseline", asr_output)
     #env.RunASR("morfessor", segmented_vocabulary, segmented_pronunciations, segmented_language_model)
     
