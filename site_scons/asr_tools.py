@@ -40,480 +40,10 @@ import frontend
 import nnet
 from attila import NNScorer, errorHandler
 
-def graph_file(target, source, env):
-    vocabulary_file, pronunciations_file, language_model_file = source
-    env.Replace(VOCABULARY_FILE=vocabulary_file.rstr())
-    env.Replace(PRONUNCIATIONS_FILE=pronunciations_file.rstr())
-    env.Replace(LANGUAGE_MODEL_FILE=language_model_file.rstr())
-    
-    sys.path.append(env.subst("${ATTILA_PATH}/tools/attila/pylib"))
-    sys.path.append(env.subst("${ATTILA_PATH}/tools/attila/bin/linux64/"))
-
-    from attila import errorHandler, HMM
-    import dsearch
-    import misc
-    import dbase
-    import frontend
-    import misc
-
-    misc.errorMax = 150000
-    errorHandler.setVerbosity(errorHandler.INFO_LOG)
-    cfg = CFG(env)
-    db = dbase.DB(dirFn=dbase.getFlatDir)
-    fe = frontend.FeCombo(db, int(cfg.samplingrate), cfg.featuretype)
-    fe.end = fe.fmmi
-    fe.pcm.pcmDir = cfg.pcmDir
-    fe.norm.normMode = 1
-    fe.norm.normDir = '${CMS_PATH}'
-    fe.fmllr.fmllrDir = '${FMLLR_PATH}'
-    HMM.silWord = '~SIL'
-    HMM.bosWord = '<s>'
-    HMM.eosWord = '</s>'
-    HMM.variants = True
-    HMM.skipBnd = False
-    HMM.silProb = 1.0
-    HMM.leftContext = 2
-    HMM.rightContext = 2
-    HMM.leftXContext = 2
-    HMM.rightXContext = 2
-    HMM.wordBoundaryPhone = '|'
-    se = dsearch.Decoder(lmType=32)
-    se.build(cfg)
-    se.dnet.write(target[0].rstr())
-    return None
-
-def vtln(target, source, env):
-    sys.path.append(env.subst("${ATTILA_PATH}/tools/attila/pylib"))
-    sys.path.append(env.subst("${ATTILA_PATH}/tools/attila/bin/linux64/"))
-    #from attila import *
-    #import vcfg as cfg
-    import aio
-    import train
-    import misc
-    import dbase
-    import frontend
-    
-    cfg = CFG(env)
-
-    for job_id in range(env["JOB_COUNT"]):
-        
-        db = dbase.DB(dirFn=dbase.getFlatDir)
-
-        db.init(cfg.dbFile, 'speaker', cfg.useDispatcher, job_id, env["JOB_COUNT"], chunkSize=1)
-        continue
-        # frontend
-        fe = frontend.FeCombo(db, int(cfg.samplingrate), cfg.featuretype)
-        fe.mel.readFilter(cfg.melFile)
-        fe.lda.readLDA(cfg.ldaFile)
-        fe.fmmi.init(cfg.trFile, cfg.trfsFile, cfg.ctxFile, cfg.ictx, cfg.octx)
-
-        continue
-        # Transcripts
-        tx    = aio.ConfRef()
-        tx.db = db
-        tx.txtDir = cfg.txtDir
-
-        # Trainer
-        tr = train.Trainer()
-        tr.initAM  (cfg)
-        tr.initDict(cfg)
-        tr.initTree(cfg)
-        tr.initHMM ()
-        tr.db = db
-        tr.gs.setFeat(fe.end.feat)
-
-        # get a set of states that correspond to phones we skip in VTLN
-        idx  = IVector()
-        silD = set()
-        for topo in tr.tset:
-            if topo.name not in cfg.silphoneL:
-                continue
-            for state in topo:
-                tr.tree.getModelSet(idx,state.root)
-                for i in range(idx.dimN):
-                    silD.add(idx[i])
-        # Voicing Model
-        cfg.gsFile   = cfg.vtlgsFile
-        cfg.msFile   = cfg.vtlmsFile
-        cfg.treeFile = cfg.vtltreeFile
-        warpLst      = range(len(fe.mel.melBank))
-        vfe          = Feature()
-        vtr = train.Trainer()
-        vtr.initAM  (cfg)
-        vtr.shareDict(tr)
-        vtr.initTree(cfg)
-        vtr.initHMM ()
-        vtr.gs.setFeat(vfe)
-
-        vdir = os.path.split(cfg.warpFile)[0]
-        if vdir and not os.path.isdir(vdir):
-            try:
-                os.makedirs(vdir)
-            except:
-                if not os.path.isdir(vdir):
-                    raise
-
-        # ------------------------------------------
-        # getNorm : speech based cms
-        # ------------------------------------------
-
-        # global arrays
-        cmsA   = {}
-        scA    = {}
-        plpA   = {}
-        scoreA = {}
-
-        def getNorm(spk):
-            global cmsA,scA,plpA,scoreA
-            wght   = FVector()
-            uttL   = db.getUtts(spk)
-            plpA   = {}
-            cmsA   = {}
-            scA    = {}
-            scoreA = {}
-            for warp in warpLst:
-                cmsA[warp]   = FMatrix()
-                scA[warp]    = Scatter()
-                scoreA[warp] = 0
-            for utt in uttL :
-                for warp in warpLst:
-                    fe.mel.utt = 'unknown'
-                    fe.plp.utt = 'unknown'            
-                    fe.mel.warp = warp
-                    try:
-                        fe.plp.eval(utt)
-                    except:
-                        misc.error('getNorm','frontend error','%s warp= %d' % (utt, warp))
-                        continue
-                    plpA[utt,warp] = Feature()
-                    plpA[utt,warp].copy(fe.plp.feat)
-                    plpA[utt,warp].mean(cmsA[warp])
-
-        # ------------------------------------------
-        # getScore
-        # ------------------------------------------
-
-        def getScore(spk):
-            global cmsA,scA,plpA,scoreA
-            uttL = db.getUtts(spk)
-            wght = FVector()    
-            for utt  in uttL :
-                try:
-                    ref = tx.get(utt)               
-                    fe.plp.eval(utt)
-                    vtr.buildHMM(ref)
-                except:
-                    misc.error('getScore','accumulation error',utt)            
-                    continue
-                path = tr.pbox[utt]
-                if len(path) == 0 :
-                    continue
-                path.align(vtr.hmm.sg)
-                frameN = len(path)
-                wght.resize(frameN)
-                wght.setConst(1.0)
-                for frameX in range(frameN):
-                    if path[frameX][0].obsX in silD:
-                        wght[frameX] = 0.0
-                for warp in warpLst:
-                    vfe.norm(plpA[utt,warp],cmsA[warp],CVN_NORM)
-                    scA[warp].accu(vfe,wght)
-                    path.update(vtr.sc)
-                    for frameX in range(frameN):
-                        if path[frameX][0].obsX in silD:
-                            continue
-                        scoreA[warp] += path[frameX][0].score
-                        if frameX > 0:
-                            scoreA[warp] -= path[frameX-1][0].score
-
-        # ------------------------------------------
-        # findWarp
-        # ------------------------------------------
-
-        def findWarp(spk):
-            global cmsA,scA,plpA,scoreA
-            bestS = 1e+20
-            bestW = 10
-            for warp in warpLst:
-                if scA[warp].cnt < cfg.vtlnMinCount:
-                    misc.warn('findWarp','insufficient counts, backing' \
-                              ' off to no warping ','spk= %s'%spk)
-                    break
-                l = scoreA[warp] / scA[warp].cnt
-                s = l-0.5*tr.sc.scale*scA[warp].logDet()
-                if s < bestS:
-                    bestS = s
-                    bestW = warp
-            if bestS < 0:
-                misc.warn('findWarp','best Warp','spk= %s warp= %d score= %2.2f (will reset)'%(spk,bestW,bestS))
-                bestW = 10
-            misc.info('findWarp','best Warp','spk= %s warp= %d score= %2.2f'%(spk,bestW,bestS))
-            return bestW
-
-        # ------------------------------------------
-        # VTLN Estimation
-        # ------------------------------------------
-
-        def process(spk,vtlnFile):
-            uttL = db.getUtts(spk)
-            tr.pbox.clear()
-            # viterbi
-            fe.mel.warp = fe.mel.nullWarp
-            for utt in uttL:
-                try:
-                    ref  = tx.get(utt)
-                    path = tr.mkPath(utt)
-                    fe.end.eval(utt)
-                    tr.buildHMM(ref)
-                    tr.viterbi()
-                except:
-                    misc.error('main','accumulation error',utt)            
-                    continue
-            # estimate warp
-            getNorm(spk)
-            getScore(spk)
-            warp = findWarp(spk)
-            # write cms
-            dir = db.getDir(spk,root=cfg.normDir,createDir=True)
-            cmsA[warp].write(dir+spk+'.mat')
-            # write vtln
-            print >>vtlnFile,spk,warp
-            return
-
-        # ------------------------------------------
-        # Main loop
-        # ------------------------------------------
-
-        vtlnFile = open(cfg.warpFile,'w')
-
-        for spk in db:
-            process(spk,vtlnFile)
-
-        vtlnFile.close()
-
-        
-    return None
-
-# def run_asr(target, source, env):
-
-#     sys.path.append(env.subst("${ATTILA_PATH}/tools/attila/pylib"))
-#     sys.path.append(env.subst("${ATTILA_PATH}/tools/attila/bin/linux64/"))
-
-#     from attila import errorHandler, HMM, NNScorer
-#     import dsearch
-#     import misc
-#     import dbase
-#     import frontend
-#     import misc
-#     import nnet
-    
-#     cfg = CFG(env)
-
-#     env.Replace(JOB_ID=0)
-#     env.Replace(JOB_COUNT=1)
-#     env.Replace(GENERATE_LATTICES=True)
-#     jid = int(env.subst("${JOB_ID}"))
-#     jnr = int(env.subst("${JOB_COUNT}"))
-#     genLat = bool(env.subst("${GENERATE_LATTICES}"))
-
-#     env.Replace(ACOUSTIC_WEIGHT=.01)
-#     acweight = float(env.subst("${ACOUSTIC_WEIGHT}"))
-
-#     # dbase
-#     db = dbase.DB(dirFn=dbase.getFlatDir)
-#     db.init(cfg.dbFile,'utterance',cfg.useDispatcher,jid,jnr,chunkSize=5)
-
-#     # frontend
-#     fe = frontend.FeCombo(db, int(cfg.samplingrate), cfg.featuretype)
-#     fe.mel.readFilter(cfg.melFile)
-#     fe.mel.readWarp(cfg.warpFile)
-#     fe.lda.readLDA(cfg.ldaFile)
-
-#     # decoder
-#     se = dsearch.Decoder(speed=12,scale=acweight,lmType=32,genLat=genLat)
-#     se.initGraph(cfg)
-
-#     se.latBeam  = 7
-#     se.linkMax  = 700
-#     rescoreBeam = 2.0
-
-#     # NN Scorer
-#     layerL = []
-#     for i in range(6):
-#         l = nnet.LayerWeights()
-#         l.name = 'layer%d'%i
-#         l.isTrainable = False
-#         l.initWeightFile = env.subst('${MODEL_PATH}/layer%d' % i)
-#         layerL.append(l)
-#         if i < 5:
-#             l = nnet.LayerSigmoid()
-#             l.name = 'layer%d-nonl' % i
-#             layerL.append(l)
-#     layerL[-1].matrixOut = True
-
-#     nn    = nnet.NeuralNet(layerL=layerL,depL=[fe.end])
-#     nn.db = db
-
-#     nn.configure()
-
-
-#     se.sc = NNScorer()
-#     se.dnet.scorer = se.sc
-#     se.sc.scale    = acweight
-#     se.sc.feat     = nn.feat
-#     se.sc.logInput = True
-#     se.sc.readPriors(cfg.priors)
-
-#     # ------------------------------------------
-#     # Main loop
-#     # ------------------------------------------
-
-#     def process(utt,f):
-#         print utt
-#         nn.eval(utt)
-#         return
-#         se.search()
-#         key    = utt + ' ' + os.path.splitext(db.getFile(utt))[0]
-#         txt    = se.getHyp().strip()
-#         hyp    = se.getCTM(key,db.getFrom(utt))
-#         tscore = se.getScore()
-#         print utt,'score= %.5f frameN= %d'%(tscore,se.dnet.state.frameN)
-#         print utt,'words=',txt
-#         for c in hyp: print >>f,c
-#         if genLat:
-#             se.rescore(rescoreBeam)
-#             se.lat.write(cfg.latDir+utt+'.fsm.gz',db.getFrom(utt))
-#         return
-
-#     misc.makeDir(cfg.ctmDir)
-#     if genLat:
-#         misc.makeDir(cfg.latDir)
-
-#     with open(env.subst("${CTM_PATH}/${JOB_ID}.ctm"), "w") as ofd:
-#         for utt in db:
-#             process(utt, ofd)
-
-#     return None
-
-# def run_asr_emitter(target, source, env):
-#     return target, source
-
-def pronunciations_to_vocabulary(target, source, env):
-    with meta_open(source[0].rstr()) as ifd:
-        d = Pronunciations(ifd)
-    with meta_open(target[0].rstr(), "w") as ofd:
-        ofd.write(d.format_vocabulary())
-    return None
-
-
-def appen_to_attila_old(target, source, env, for_signature):
-    pron, pnsp, tag = target
-    lexicons = source[0:-1]
-    args = source[-1].read()
-    base = "python data/makeBaseDict.py -d %s -p %s -t %s -l %s" % (pron, pnsp, tag, args["LOCALE"])
-    if args.get("SKIP_ROMAN", False):
-        base += " -s"
-    return "%s %s" % (base, " ".join([x.rstr() for x in lexicons]))
-
-
-def appen_to_attila(target, source, env):
-    args = source[-1].read()
-
-    # set the locale for sorting and getting consistent case
-    locale.setlocale(locale.LC_ALL, args.get("LOCALE", "utf-8"))
-
-    # convert BABEL SAMPA pronunciations to attila format
-    #
-    # In this version the primary stress ("), secondary stress (%),
-    # syllable boundary (.), and word boundary within compound (#) marks
-    # are simply stripped out.  We may want to try including this
-    # information in the form of tags in some variants.
-    #
-    def attilapron(u, pnsp):
-        skipD = frozenset(['"', '%', '.', '#'])
-        phoneL = []
-        for c in u.encode('utf-8').split():
-            if c in skipD:
-                continue
-            #c = cfg.p2p.get(c,c) TODO
-            pnsp.add(c)
-            phoneL.append(c)
-        phoneL.append('[ wb ]')
-        if len(phoneL) > 2:
-            phoneL.insert(1, '[ wb ]')
-        return ' '.join(phoneL)
-
-    # Pronunciations for the BABEL standard tags, silence, and the start
-    # and end tokens
-    nonlex = [ ['<UNINTELLIGIBLE>', set(['REJ [ wb ]'])],
-               ['<FOREIGN>',   set(['REJ [ wb ]'])],
-               ['<LAUGH>',     set(['VN [ wb ]'])],
-               ['<COUGH>',     set(['VN [ wb ]'])],
-               ['<BREATH>',    set(['NS [ wb ]', 'VN [ wb ]'])],
-               ['<LIPSMACK>',  set(['NS [ wb ]'])],
-               ['<CLICK>',     set(['NS [ wb ]'])],
-               ['<RING>',      set(['NS [ wb ]'])],
-               ['<DTMF>',      set(['NS [ wb ]'])],
-               ['<INT>',       set(['NS [ wb ]'])],
-               ['<NO-SPEECH>', set(['SIL [ wb ]'])],
-               ['~SIL',        set(['SIL [ wb ]'])], 
-               ['<s>',         set(['SIL [ wb ]'])],
-               ['</s>',        set(['SIL [ wb ]'])], ]
-
-    # Get the right dictionaries
-    dictL = [x.rstr() for x in source[:-1]]
-
-    # read in the dictionaries, normalizing the case of the word tokens to
-    # all lowercase.  Normalize <hes> to <HES> so the LM tools don't think
-    # it is an XML tag.
-    voc = {}
-    pnsp = set()
-    for name in dictL:
-        with codecs.open(name,'rb',encoding='utf-8') as f:
-            for line in f:
-                pronL = line.strip().split(u'\t')
-                token = pronL.pop(0).lower()
-                if args.get("SKIP_ROMAN", False):
-                    pronL.pop(0)
-                if token == '<hes>':
-                    token = '<HES>'
-                prons = voc.setdefault(token, set())
-                prons.update([attilapron(p,pnsp) for p in pronL])
-
-    # need a collation function as a workaround for a Unicode bug in
-    # locale.xtrxfrm (bug is fixed in Python 3.0)
-    def collate(s):
-        return locale.strxfrm(s.encode('utf-8'))
-
-    odict, opnsp, otags = [x.rstr() for x in target]
-
-    # write the pronunciations, and collect the phone set
-    with open(odict, 'w') as f:
-        for token in sorted(voc.iterkeys(),key=collate):
-            for pronX, pron in enumerate([x for x in voc[token]]):
-                f.write("%s(%02d) %s\n" % (token.encode('utf-8'), 1+pronX, pron))
-                
-        for elt in nonlex:
-            token = elt[0]
-            for pronX, pron in enumerate(elt[1]):
-                f.write("%s(%02d) %s\n" % (token, 1+pronX, pron))
-
-    # generate and write a list of phone symbols (pnsp)
-    with open(opnsp, 'w') as f:
-        for pn in sorted(pnsp):
-            f.write("%s\n" % pn)
-        f.write("\n".join(["SIL", "NS", "VN", "REJ", "|", "-1"]) + "\n")
-
-    # generate and write a list of tags
-    with open(otags,'w') as f:
-        f.write("wb\n")
-    return None
-
 
 def ibm_train_language_model(target, source, env):
     text_file = source[0].rstr()
     n = source[1].read()
-
     with temp_dir() as prefix_dir, temp_file() as vocab_file, temp_file(suffix=".txt") as sentence_file, meta_open(text_file) as text_fd:
         # first create count files
         sentences = ["<s> %s </s>" % (l) for l in text_fd]
@@ -654,30 +184,6 @@ def augment_language_model_emitter(target, source, env):
         return new_targets, new_sources
 
 
-# def collect_text(target, source, env):
-#     words = set()
-#     with meta_open(target[0].rstr(), "w") as ofd:
-#         for dname in source:
-#             for fname in glob(os.path.join(dname.rstr(), "*.txt")) + glob(os.path.join(dname.rstr(), "*.txt.gz")):
-#                 with meta_open(fname) as ifd:
-#                     for line in ifd:
-#                         if not line.startswith("["):
-#                             toks = []
-#                             for x in line.lower().split():
-#                                 if x == "<hes>":
-#                                     toks.append("<HES>")
-#                                 elif not x.startswith("<"):
-#                                     toks.append(x)
-#                             for t in toks:
-#                                 words.add(t)
-#                             if len(toks) > 0:
-#                                 ofd.write("%s </s>\n" % (" ".join(toks)))
-#     with meta_open(target[1].rstr(), "w") as ofd:
-#         ofd.write("# BOS: <s>\n# EOS: </s>\n# UNK: <UNK>\n<s>\n</s>\n<UNK>\n")
-#         ofd.write("\n".join(sorted(words)) + "\n")                                      
-#     return None
-
-
 def collect_text_emitter(target, source, env):
     return target, source
 
@@ -716,10 +222,6 @@ def create_asr_experiment(target, source, env):
 #     cdll.LoadLibrary("/home/tom/projects/babel_data/VT-2-5-babel/tools/attila/bin/linux64/intel64/libmkl_intel_lp64.so"),
 #     cdll.LoadLibrary("/home/tom/projects/babel_data/VT-2-5-babel/tools/attila/bin/linux64/libattila.so")
 # ]
-
-
-def cfg(env, **args):
-    return None
 
 
 def create_asr_experiment_emitter(target, source, env):
@@ -784,19 +286,6 @@ def replace_pronunciations(target, source, env):
     return None
 
 
-# def replace_probabilities(target, source, env):
-#     """
-#     Takes a probability list and a language model, and creates a new probability list
-#     where each word has the probability from the language model, for overlapping words.
-
-#     Either the unspecified word probabilities are scaled (False), or all word probabilities 
-#     are scaled (True), such that the unigram probabilities sum to one.
-#     """
-#     with meta_open(source[0].rstr()) as pl_fd, meta_open(source[1].rstr()) as lm_fd:
-#         pass
-#     return None
-
-
 def filter_words(target, source, env):
     """
     Takes a coherent language model, pronunciation file and vocabulary file, and a second
@@ -844,19 +333,6 @@ def filter_babel_gum(target, source, env):
         with meta_open(target[0].rstr(), "w") as pron_ofd, meta_open(target[1].rstr(), "w") as prob_ofd:
             pron_ofd.write(pron.format())
             prob_ofd.write(prob.format())
-    return None
-
-
-def run_asr_experiment(target, source, env):
-    args = source[-1].read()
-    #construct_command = env.subst("${ATTILA_INTERPRETER} ${SOURCES[1].abspath}", source=source)
-    #out, err, success = run_command(construct_command)
-    #if not success:
-    #    return out + err
-    #command = env.subst("${ATTILA_INTERPRETER} ${SOURCES[2].abspath} -n ${LOCAL_JOBS_PER_SCONS_INSTANCE} -j %d -w ${ACOUSTIC_WEIGHT} -l 1", source=source)
-    #procs = [subprocess.Popen(shlex.split(command % i)) for i in range(env["LOCAL_JOBS_PER_SCONS_INSTANCE"])]
-    #for p in procs:
-    #    p.wait()
     return None
 
 
@@ -1306,6 +782,9 @@ def asr_test(target, source, env):
     #
     # based on Zulu LLP
     #
+    #with meta_open(target[0].rstr(), "w") as ofd:
+    #    return None
+
     dnet, vocabulary, pronunciations, language_model, args = source
     args = args.read()
     out_path, tail = os.path.split(os.path.dirname(target[0].rstr()))
@@ -1323,7 +802,7 @@ def asr_test(target, source, env):
     # from test.py
     #
     jid    = args.get("JOB_ID", 0)
-    jnr    = int(env["JOB_COUNT"]) #args.get("JOB_COUNT", 1)
+    jnr    = int(env["ASR_JOB_COUNT"]) #args.get("JOB_COUNT", 1)
     genLat = True    
     cfg.useDispatcher = False
     
@@ -1385,7 +864,7 @@ def run_asr(env, root_path, vocabulary, pronunciations, language_model, *args, *
     env.Replace(ROOT_PATH=root_path)
     dnet = env.ASRConstruct("${ROOT_PATH}/dnet.bin.gz", [vocabulary, pronunciations, language_model])
     tests = []
-    for i in range(env["JOB_COUNT"]):
+    for i in range(env["ASR_JOB_COUNT"]):
         tests.append(env.ASRTest(["${ROOT_PATH}/ctm/%d.ctm" % i],
                                  [dnet, vocabulary, pronunciations, language_model, env.Value({"JOB_ID" : i})]))
     return [dnet] + tests
@@ -1394,44 +873,10 @@ def run_asr(env, root_path, vocabulary, pronunciations, language_model, *args, *
 def TOOLS_ADD(env):
     env["FLOOKUP"] = "flookup"
     BUILDERS = {"ASRConstruct" : Builder(action=asr_construct),
-                
-                #"SplitTrainDev" : Builder(action=split_train_dev),
-                #"GraphFile" : Builder(action=graph_file),
-                #"VTLN" : Builder(action=vtln),
-                #"AppenToAttila" : Builder(action=appen_to_attila),
-                #"PronunciationsToVocabulary" : Builder(action=pronunciations_to_vocabulary),
                 "IBMTrainLanguageModel" : Builder(action=ibm_train_language_model),
-                #"MissingVocabulary" : Builder(action=missing_vocabulary),
-                #"AugmentLanguageModel" : Builder(action=augment_language_model, emitter=augment_language_model_emitter),
-                #"AugmentLanguageModelFromBabel" : Builder(action=augment_language_model_from_babel),
-                #"TranscriptVocabulary" : Builder(action=transcript_vocabulary),
-                #"TrainPronunciationModel" : Builder(action=train_pronunciation_model),
-                #"CollectText" : Builder(action=collect_text, emitter=collect_text_emitter),
-                #"BabelGumLexicon" : Builder(action=babelgum_lexicon),
-                #"ReplacePronunciations" : Builder(action=replace_pronunciations),
-                #"ReplaceProbabilities" : Builder(action=replace_probabilities),
-                #"FilterWords" : Builder(action=filter_words),                           
-                #"FilterBabelGum" : Builder(action=filter_babel_gum),
-                #"ScoreResults" : Builder(action=score_results, emitter=score_emitter),
-                #"CollateResults" : Builder(action=collate_results),
-                #"SplitExpansion" : Builder(action=split_expansion, emitter=split_expansion_emitter),
-                #"PlotProbabilities" : Builder(action=plot_probabilities),
-                #"PlotReduction" : Builder(action=plot_reduction, emitter=plot_reduction_emitter),
-                #"PlotUnigramProbabilities" : Builder(action=plot_unigram_probabilities),
-                #"TranscriptsToVocabulary" : Builder(action=transcripts_to_vocabulary),
-                
-                #"CreateASRExperiment" : Builder(action=create_asr_experiment, emitter=create_asr_experiment_emitter),
-                #"RunASR" : Builder(action=run_asr, emitter=run_asr_emitter),
-                #"RunASRExperiment" : Builder(action=run_asr_experiment, emitter=run_asr_experiment_emitter),
-                #"PronunciationsFromProbabilityList" : Builder(action=pronunciations_from_probability_list),
-                #"TopWords" : Builder(action=top_words),
-                #"RunG2P" : Builder(action=run_g2p),
-                #"G2PToBabel" : Builder(action=g2p_to_babel),
-                #"PronunciationPerformance" : Builder(action=pronunciation_performance),
                 }
-
     if env["HAS_TORQUE"]:
-        BUILDERS["ASRTest"] = Builder(action=torque_run)
+        BUILDERS["ASRTest"] = Builder(action=Action(torque_run, batch_key=True))
     elif env["IS_THREADED"]:
         BUILDERS["ASRTest"] = Builder(action=threaded_run)
     else:

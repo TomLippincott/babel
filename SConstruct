@@ -124,6 +124,7 @@ vars.AddVariables(
     ("WRD2PHLATTICE", "", "${BABEL_BIN_PATH}/wrd2phlattice"),
     ("BUILDINDEX", "", "${BABEL_BIN_PATH}/buildindex"),
     ("BUILDPADFST", "", "${BABEL_BIN_PATH}/buildpadfst"),
+    ("LAT2IDX", "", "${BABEL_BIN_PATH}/lat2idx"),
     ("FSTCOMPILE", "", "${OVERLAY}/bin/fstcompile"),
     ("QUERY2PHONEFST", "", "${BABEL_BIN_PATH}/query2phonefst"),
     ("STDSEARCH", "", "${BABEL_BIN_PATH}/stdsearch"),
@@ -135,7 +136,8 @@ vars.AddVariables(
     ("KWSEVALPL", "", "${F4DE}/KWSEval/tools/KWSEval/KWSEval.pl"),    
 
     # all configuration information for ASR
-    ("JOB_COUNT", "", 9),
+    ("ASR_JOB_COUNT", "", 1),
+    ("KWS_JOB_COUNT", "", 1),
     ("JOB_ID", "", 0),
     
     ("MODEL_PATH", "", "${IBM_MODELS}/${BABEL_ID}/LLP/models"),
@@ -242,6 +244,15 @@ for language, properties in env["LANGUAGES"].iteritems():
     #    full_data = env.TranscriptsToData("work/full_data/${LANGUAGE}.xml.gz", [full_transcripts, Value({})])
     #    limited_data = env.GenerateDataSubset("work/training_data/${LANGUAGE}.xml.gz", [full_data, Value({"RANDOM" : True, "WORDS" : 100000})])
 
+    baseline_vocabulary = env.File("${IBM_MODELS}/${BABEL_ID}/LLP/models/vocab")
+    baseline_pronunciations = env.File("${IBM_MODELS}/${BABEL_ID}/LLP/models/dict.test")
+    baseline_language_model = env.File("${IBM_MODELS}/${BABEL_ID}/LLP/models/lm.2gm.arpabo.gz")
+    
+    baseline_asr_output = env.RunASR("work/asr_experiments/${LANGUAGE_NAME}/baseline", baseline_vocabulary, baseline_pronunciations, baseline_language_model)
+    kws_output = env.RunKWS("work/kws_experiments/${LANGUAGE_NAME}/baseline", baseline_asr_output)
+    continue
+
+    
     #elif os.path.exists(env.subst("${LANGUAGE_PACK_PATH}/${BABEL_ID}.tgz")):
     full_transcripts = env.ExtractTranscripts("work/full_transcripts/${LANGUAGE_NAME}.xml.gz", ["${STRIPPED_LANGUAGE_PACK_PATH}/${BABEL_ID}.tgz", Value({})])
     limited_transcripts = env.ExtractTranscripts("work/training_transcripts/${LANGUAGE_NAME}_training.xml.gz", ["${STRIPPED_LANGUAGE_PACK_PATH}/${BABEL_ID}.tgz",
@@ -278,14 +289,9 @@ for language, properties in env["LANGUAGES"].iteritems():
     #language_model = env.IBMTrainLanguageModel("work/language_models/${LANGUAGE_NAME}.arpabo.gz", [training_text, Value(2)])
     segmented_language_model = env.IBMTrainLanguageModel("work/asr_input/${LANGUAGE_NAME}/languagemodel_segmented.arpabo.gz", [segmented_training_text, Value(2)])
 
-    baseline_vocabulary = env.File("${IBM_MODELS}/${BABEL_ID}/LLP/models/vocab")
-    baseline_pronunciations = env.File("${IBM_MODELS}/${BABEL_ID}/LLP/models/dict.test")
-    baseline_language_model = env.File("${IBM_MODELS}/${BABEL_ID}/LLP/models/lm.2gm.arpabo.gz")
 
-    baseline_asr_output = env.RunASR("work/asr_experiments/${LANGUAGE_NAME}/baseline", baseline_vocabulary, baseline_pronunciations, baseline_language_model)
+    #morfessor_asr_output = env.RunASR("work/asr_experiments/${LANGUAGE_NAME}/morfessor", segmented_vocabulary, segmented_pronunciations, segmented_language_model)
 
-    morfessor_asr_output = env.RunASR("work/asr_experiments/${LANGUAGE_NAME}/morfessor", segmented_vocabulary, segmented_pronunciations, segmented_language_model)
-    #kws_output = env.RunKWS("work/kws_experiments/${LANGUAGE_NAME}/baseline", asr_output)
     #env.RunASR("morfessor", segmented_vocabulary, segmented_pronunciations, segmented_language_model)
     
 

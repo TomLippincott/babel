@@ -110,17 +110,21 @@ def clean_pronounce_sym_table(target, source, env):
     """
     Deduplicates lexicon, removes "(NUM)" suffixes, and adds <query> entry.
     """
-    ofd = meta_open(target[0].rstr(), "w")
-    seen = set()
-    for line in meta_open(source[0].rstr()):
-        if line.startswith("<EPSILON>"):
-            word = "<EPSILON>"
-        else:
-            word = re.match(r"^(.*)\(\d+\)\s+.*$", line).groups()[0]
-        if word not in seen:
-            ofd.write("%s\t%d\n" % (word, len(seen)))
-            seen.add(word)
-    ofd.write("<query>\t%d\n" % (len(seen)))
+    with meta_open(source[0].rstr()) as ifd:
+        words = set([re.match(r"^(.*)\(\d+\)\s+.*$", l).groups()[0] for l in ifd if not re.match(r"^(\<|\~).*", l)])
+        #ofd.write("\n".join([]))
+        # for line in sorted(meta_open(source[0].rstr())):
+        #     if line.startswith("<") or line.startswith("~"): #"<EPSILON>"):
+        #         continue
+        #         word = "<EPSILON>"
+        #     else:
+        #         word = re.match(r"^(.*)\(\d+\)\s+.*$", line).groups()[0]
+        #     if word not in seen:
+        #         ofd.write("%s\t%d\n" % (word, len(seen)))
+        #         seen.add(word)
+        #ofd.write("<query>\t%d\n" % (len(seen)))
+    with meta_open(target[0].rstr(), "w") as ofd:
+        ofd.write("\n".join(["%s\t%d" % (w, i) for i, w in enumerate(["<EPSILON>", "</s>", "<HES>", "<s>", "~SIL"] + sorted(words) + ["<query>"])]) + "\n")
     return None
 
 def munge_dbfile(target, source, env):
@@ -159,7 +163,9 @@ def create_data_list(target, source, env):
         try:
             name, time, timeend = data[uttname][uttnum]
             newname = os.path.abspath(os.path.join(path, "%s%s%s.%s" % (uttname, delim, uttnum, args["ext"])))
-            ofd.write(env.subst("%s %s %s %s %s.osym %s" % (os.path.splitext(name)[0], time, timeend, newname, newname, os.path.abspath(lattice_file))) + "\n")
+            #ofd.write(env.subst("%s %s %s %s %s.osym %s" % (os.path.splitext(name)[0], time, timeend, newname, newname, os.path.abspath(lattice_file))) + "\n")
+            ofd.write(env.subst("%s %s %s %s %s" % (os.path.abspath(lattice_file), os.path.splitext(name)[0], time, timeend, newname)) + "\n")
+            #os.path.splitext(name)[0], time, timeend, newname, newname, os.path.abspath(lattice_file))) + "\n")
         except:
             return "lattice file not found in database: %s (are you sure your database file matches your lattice directory?)" % bn
     ofd.close()
@@ -226,11 +232,12 @@ def word_to_phone_lattice(target, source, env, for_signature):
     args["CONFUSION_NETWORK"] = ""
     args["FSM_DIR"] = "temp"
     args["WORDPRONSYMTABLE"] = wordpron.rstr()
-    return "${WRD2PHLATTICE} -d %(DICTIONARY)s -D %(DATA_FILE)s -t %(FSMGZ_FORMAT)s -s %(WORDPRONSYMTABLE)s -S %(EPSILON_SYMBOLS)s %(CONFUSION_NETWORK)s -P %(PRUNE_THRESHOLD)d" % args
+    return "${LAT2IDX} -d %(DICTIONARY)s -D %(DATA_FILE)s -s %(WORDPRONSYMTABLE)s -S %(EPSILON_SYMBOLS)s %(CONFUSION_NETWORK)s -P %(PRUNE_THRESHOLD)d > ${TARGETS[0]}" % args
+    #return "${WRD2PHLATTICE} -d %(DICTIONARY)s -D %(DATA_FILE)s -t %(FSMGZ_FORMAT)s -s %(WORDPRONSYMTABLE)s -S %(EPSILON_SYMBOLS)s %(CONFUSION_NETWORK)s -P %(PRUNE_THRESHOLD)d" % args
 #            args)
 
-
-
+def lattice_to_index(target, source, env, for_signature):
+    return "${LAT2IDX} -D ${SOURCES[0]} -s ${SOURCES[1]} -d ${SOURCES[2]} -S ${EPSILON_SYMBOLS} -I ${TARGETS[0]} -i ${TARGETS[1]} -o ${TARGETS[2]} 2> /dev/null"
 
 def get_file_list(target, source, env):
     """
@@ -269,10 +276,11 @@ Usage: /mnt/calculon-minor/lorelei_svn/KWS/bin64/buildpadfst [symtable_file] [ou
         return stderr
     return None
 
-def fst_compile(target, source, env):
+def fst_compile(target, source, env, for_signature):
     """
     Compile an FST using OpenFST's binary 'fstcompile'.
     """
+    return "${FSTCOMPILE} --isymbols=${SOURCES[0]} --osymbols=${SOURCES[0]} ${SOURCES[1]}"
     command = env.subst("${FSTCOMPILE} --isymbols=${SOURCES[0]} --osymbols=${SOURCES[0]} ${SOURCES[1]}", target=target, source=source)
     stdout, stderr, success = run_command(command, env={"LD_LIBRARY_PATH" : env.subst(env["LIBRARY_OVERLAY"])}, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if not success:
@@ -280,7 +288,7 @@ def fst_compile(target, source, env):
     meta_open(target[0].rstr(), "w").write(stdout)
     return None
 
-def query_to_phone_fst(target, source, env):
+def query_to_phone_fst(target, source, env, for_signature):
     """
 Usage: /mnt/calculon-minor/lorelei_svn/KWS/bin64/query2phonefst [-opts] [outputdir] [querylist]                                        
 -d file         dictionary file                                                                 
@@ -301,6 +309,7 @@ Usage: /mnt/calculon-minor/lorelei_svn/KWS/bin64/query2phonefst [-opts] [outputd
         os.makedirs(args["OUTDIR"])
     except:
         pass
+    return "${QUERY2PHONEFST} -p ${SOURCES[0]} -s ${SOURCES[1]} -d ${SOURCES[2]} -l ${TARGETS[0]} -n %(n)d -I %(I)d %(OUTDIR)s ${SOURCES[3]}" % args
     command = env.subst("${QUERY2PHONEFST} -p ${SOURCES[0]} -s ${SOURCES[1]} -d ${SOURCES[2]} -l ${TARGETS[0]} -n %(n)d -I %(I)d %(OUTDIR)s ${SOURCES[3]}" % args, target=target, source=source)
     #command = env.subst("${BABEL_REPO}/KWS/bin64/query2phonefst -s ${SOURCES[1]} -d ${SOURCES[2]} -l ${TARGETS[0]} -I %(I)d %(OUTDIR)s ${SOURCES[3]}" % args, target=target, source=source)
     #print command
@@ -309,7 +318,7 @@ Usage: /mnt/calculon-minor/lorelei_svn/KWS/bin64/query2phonefst [-opts] [outputd
         return stderr
     return None
 
-def standard_search(target, source, env):
+def standard_search(target, source, env, for_signature):
     """
 Usage: /mnt/calculon-minor/lorelei_svn/KWS/bin64/stdsearch [-opts] [result_file] [query_file]                     
 Options:                                                                        
@@ -334,6 +343,8 @@ Options:
 -v               (verbose) if specified, print all debug outputs to stderr      
 -?               info/options
     """
+
+    return "${STDSEARCH} -F ${TARGET} -i ${SOURCES[2]} -b KW%(LANGUAGE_ID)s- -s ${SOURCES[1]} -p ${SOURCES[3]} -d ${SOURCES[0]} -a %(TITLE)s -m %(PRECISION)s ${SOURCES[4]}"
     data_list, isym, idx, pad, queryph = source[0:5]
     args = source[-1].read()
     if source[-2].stat().st_size == 0:
@@ -673,15 +684,15 @@ def run_kws(env, experiment_path, asr_output, *args, **kw):
 
 
 
-    lattice_lists = env.SplitList([pjoin(experiment_path, "lattice_list_%d.txt" % (n + 1)) for n in range(env["JOB_COUNT"])], full_lattice_list)
+    lattice_lists = env.SplitList([pjoin(experiment_path, "lattice_list_%d.txt" % (n + 1)) for n in range(env["KWS_JOB_COUNT"])], full_lattice_list)
 
 
     wordpron = env.WordPronounceSymTable(pjoin(experiment_path, "in_vocabulary_symbol_table.txt"),
                                          cfg.dictFile)
 
 
-    isym = env.CleanPronounceSymTable(pjoin(experiment_path, "cleaned_in_vocabulary_symbol_table.txt"),
-                                      wordpron)
+    vocabulary_symbols = env.CleanPronounceSymTable(pjoin(experiment_path, "cleaned_in_vocabulary_symbol_table.txt"),
+                                                    wordpron)
 
     mdb = env.MungeDatabase(pjoin(experiment_path, "munged_database.txt"),
                             [cfg.dbFile, full_lattice_list])
@@ -696,12 +707,12 @@ def run_kws(env, experiment_path, asr_output, *args, **kw):
                                                             "LATTICE_DIR" : asr_lattice_path,
                                                             })], BASE_PATH=experiment_path)        
 
-    data_lists = env.SplitList([pjoin(experiment_path, "data_list_%d.txt" % (n + 1)) for n in range(env["JOB_COUNT"])], full_data_list)
+    data_lists = env.SplitList([pjoin(experiment_path, "data_list_%d.txt" % (n + 1)) for n in range(env["KWS_JOB_COUNT"])], full_data_list)
 
     ecf_file = env.ECFFile(pjoin(experiment_path, "ecf.xml"), mdb)
 
     p2p_fst = env.FSTCompile(pjoin(experiment_path, "p2p_fst.txt"),
-                             [isym, word_to_word_fst])
+                             [vocabulary_symbols, word_to_word_fst])
 
 
 
@@ -712,37 +723,42 @@ def run_kws(env, experiment_path, asr_output, *args, **kw):
     #                                                                                                        "EPSILON_SYMBOLS" : "'<s>,</s>,~SIL,<HES>'"})])
     #
     #
-    #return None
+    env.Replace(EPSILON_SYMBOLS="'<s>,</s>,~SIL,<HES>'")
     wtp_lattices = []
     for i, (data_list, lattice_list) in enumerate(zip(data_lists, lattice_lists)):
 
-        wp = env.WordToPhoneLattice(pjoin(experiment_path, "lattices", "lattice_generation-%d.stamp" % (i + 1)), 
-                                   [data_list, lattice_list, wordpron, cfg.dictFile, env.Value({"PRUNE_THRESHOLD" : -1,
-                                                                                                "FSMGZ_FORMAT" : "",
-                                                                                                "CONFUSION_NETWORK" : "",
-                                                                                                "EPSILON_SYMBOLS" : "'<s>,</s>,~SIL,<HES>'",
-                                                                                            })])
+        #wp = env.WordToPhoneLattice(pjoin(experiment_path, "lattices", "lattice_generation-%d.stamp" % (i + 1)),
+        idx, isym, osym = env.LatticeToIndex([pjoin(experiment_path, "lattices", "index-%d" % (i + 1)),
+                                              pjoin(experiment_path, "lattices", "isym-%d" % (i + 1)),
+                                              pjoin(experiment_path, "lattices", "osym-%d" % (i + 1))],
+                                             [data_list, wordpron, cfg.dictFile])
+                                  #, env.Value({"PRUNE_THRESHOLD" : -1,
+                                  #                                                            "FSMGZ_FORMAT" : "",
+                                  #                                                            "CONFUSION_NETWORK" : "",
+                                  #                                                            "EPSILON_SYMBOLS" : "'<s>,</s>,~SIL,<HES>'",
+                                  #                                                        })])
 
-        fl = env.GetFileList(pjoin(experiment_path, "file_list-%d.txt" % (i + 1)), 
-                             [data_list, wp])
+        #fl = env.GetFileList(pjoin(experiment_path, "file_list-%d.txt" % (i + 1)), 
+        #                     [data_list, wp])
 
-        idx = env.BuildIndex(pjoin(experiment_path, "index-%d.fst" % (i + 1)),
-                             fl)
-
-        wtp_lattices.append((wp, data_list, lattice_list, fl, idx))
-    return None
-
+        #idx = env.BuildIndex(pjoin(experiment_path, "index-%d.fst" % (i + 1)),
+        #                     fl)
+        
+        wtp_lattices.append((data_list, lattice_list, idx, isym, osym))
 
     merged = {}
     for query_type, query_file in zip(["in_vocabulary", "out_of_vocabulary"], [iv_query_terms, oov_query_terms]):
-        queries = env.QueryToPhoneFST(pjoin(directories["OUTPUT_PATH"], query_type, "query.fst"), 
-                                      [p2p_fst, isym, iv_dict, query_file, env.Value({"n" : 1, "I" : 1, "OUTDIR" : pjoin(directories["OUTPUT_PATH"], query_type, "queries")})])
+        queries = env.QueryToPhoneFST(pjoin(experiment_path, query_type, "query.fst"), 
+                                      [p2p_fst, isym, cfg.vocab, query_file, env.Value({"n" : 1, "I" : 1, "OUTDIR" : pjoin(experiment_path, query_type, "queries")})])
+
         searches = []
-        for i, (wtp_lattice, data_list, lattice_list, fl, idx) in enumerate(wtp_lattices):
-            searches.append(env.StandardSearch(pjoin(directories["OUTPUT_PATH"], query_type, "search_output-%d.txt" % (i + 1)),
-                                               [data_list, isym, idx, padfst, queries, env.Value({"PRECISION" : "'%.4d'", "TITLE" : "std.xml", "LANGUAGE_ID" : language_id})]))
-
-
+        for i, (data_list, lattice_list, idx, isym, osym) in enumerate(wtp_lattices):
+            #continue
+            searches.append(env.StandardSearch(pjoin(experiment_path, query_type, "search_output-%d.txt" % (i + 1)),
+                                               [data_list, isym, idx, queries]))
+                                               #, env.Value({"PRECISION" : "'%.4d'", "TITLE" : "std.xml", "LANGUAGE_ID" : babel_id})]))
+                                               
+        continue
 
         qtl, res_list, res, ures = env.Merge([pjoin(directories["OUTPUT_PATH"], query_type, x) for x in ["ids_to_query_terms.txt", "result_file_list.txt", "search_results.xml", "unique_search_results.xml"]], 
                                              [query_file] + searches + [env.Value({"MODE" : "merge-default",
@@ -753,6 +769,7 @@ def run_kws(env, experiment_path, asr_output, *args, **kw):
         om = env.MergeScores(pjoin(directories["OUTPUT_PATH"], query_type, "results.xml"), 
                              res)
 
+    return None
     iv_oov = env.MergeIVOOV(pjoin(directories["OUTPUT_PATH"], "iv_oov_results.xml"), 
                             [merged["in_vocabulary"], merged["out_of_vocabulary"], term_map, files["KEYWORDS_FILE"]])
 
@@ -781,8 +798,10 @@ def TOOLS_ADD(env):
                 'GetFileList' : Builder(action=get_file_list), 
                 'BuildIndex' : Builder(action=build_index), 
                 'BuildPadFST' : Builder(action=build_pad_fst), 
-                'FSTCompile' : Builder(action=fst_compile), 
-                'QueryToPhoneFST' : Builder(action=query_to_phone_fst),
+                'FSTCompile' : Builder(action="${FSTCOMPILE} --isymbols=${SOURCES[0]} --osymbols=${SOURCES[0]} ${SOURCES[1]} > ${TARGETS[0]}"), 
+                'QueryToPhoneFST' : Builder(generator=query_to_phone_fst),
+
+                
                 #'StandardSearch' : Builder(action=standard_search), 
                 'Merge' : Builder(action=merge),
                 'MergeScores' : Builder(action=merge_scores),
@@ -794,7 +813,8 @@ def TOOLS_ADD(env):
                 "QueryFiles" : Builder(action=query_files),
                 "DatabaseFile" : Builder(action=database_file),
                 "CollateScores" : Builder(action=collate_scores),
-
+                "LatticeToIndex" : Builder(generator=lattice_to_index),
+                
                 "NewTermMap2QueryTerm" : Builder(action="${KWS_SCRIPTS}/termmap2queryterm.pl ${LANGUAGE_ID} ${KWS_RESOURCES} ${TARGET[0]} ${TARGET[1]} ${TARGET[2]}"),
                 "NewCreateWP" : Builder(action="${KWS_SCRIPTS}/create_wp.pl ${IV_DICT} ${OOV_DICT} ${DATA_FST}"),
                 "NewCreateP2P" : Builder(action="${KWS_SCRIPTS}/create_p2p.pl ${P2P} ${DATA_FST}}"),
@@ -805,7 +825,8 @@ def TOOLS_ADD(env):
                 }
     #if env.get("HAS_TORQUE", False):
     BUILDERS["WordToPhoneLattice"] = Builder(generator=word_to_phone_lattice)
-    BUILDERS["StandardSearch"] = Builder(action=standard_search_torque)
+    BUILDERS["StandardSearch"] = Builder(action="${STDSEARCH} -F ${TARGETS[0]} -i ${SOURCES[2]} -s ${SOURCES[1]} -d ${SOURCES[0]} ${SOURCES[3]}")
+    #        generator=standard_search)
     env.AddMethod(run_kws, "RunKWS")
     #else:
     #    BUILDERS["WordToPhoneLattice"] = SimpleCommandThreadedBuilder(
