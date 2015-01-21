@@ -215,14 +215,6 @@ def create_asr_experiment(target, source, env):
 
     return None
 
-#from ctypes import cdll
-#l = [cdll.LoadLibrary("/home/tom/projects/babel_data/VT-2-5-babel/tools/attila/bin/linux64/intel64/libmkl_mc.so"),
-#     cdll.LoadLibrary("/home/tom/projects/babel_data/VT-2-5-babel/tools/attila/bin/linux64/intel64/libmkl_def.so"),
-#     cdll.LoadLibrary("/home/tom/projects/babel_data/VT-2-5-babel/tools/attila/bin/linux64/intel64/libmkl_core.so"),
-#     cdll.LoadLibrary("/home/tom/projects/babel_data/VT-2-5-babel/tools/attila/bin/linux64/intel64/libmkl_intel_lp64.so"),
-#     cdll.LoadLibrary("/home/tom/projects/babel_data/VT-2-5-babel/tools/attila/bin/linux64/libattila.so")
-# ]
-
 
 def create_asr_experiment_emitter(target, source, env):
 
