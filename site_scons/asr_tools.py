@@ -782,8 +782,8 @@ def asr_test(target, source, env):
     #
     # based on Zulu LLP
     #
-    #with meta_open(target[0].rstr(), "w") as ofd:
-    #    return None
+    with meta_open(target[0].rstr(), "w") as ofd:
+        return None
 
     dnet, vocabulary, pronunciations, language_model, args = source
     args = args.read()
