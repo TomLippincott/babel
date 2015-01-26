@@ -170,6 +170,7 @@ def create_data_list(target, source, env):
             ofd.write(env.subst("%s %s %s %s %s" % (os.path.abspath(lattice_file), os.path.splitext(name)[0], time, timeend, newname)) + "\n")
             #os.path.splitext(name)[0], time, timeend, newname, newname, os.path.abspath(lattice_file))) + "\n")
         except:
+            continue
             return "lattice file not found in database: %s (are you sure your database file matches your lattice directory?)" % bn
     ofd.close()
     return None
@@ -246,9 +247,9 @@ def lattice_to_index(target, source, env, for_signature):
 
 def get_file_list(target, source, env):
     """
-    Extracts the third field from a database file (i.e. the name of the lattice file).
     """
-    meta_open(target[0].rstr(), "w").write("\n".join([x.split()[3] for x in meta_open(source[0].rstr())]))
+    with meta_open(target[0].rstr(), "w") as ofd:
+        ofd.write("\n".join([os.path.abspath(x.rstr()) for x in source]) + "\n")
     return None
 
 
@@ -314,10 +315,10 @@ Usage: /mnt/calculon-minor/lorelei_svn/KWS/bin64/query2phonefst [-opts] [outputd
 -?              info/options
     """
     args = source[-1].read()
-    try:
-        os.makedirs(args["OUTDIR"])
-    except:
-        pass
+    #try:
+    #    os.makedirs(args["OUTDIR"])
+    #except:
+    #    pass
     return "${QUERY2PHONEFST} -p ${SOURCES[0]} -s ${SOURCES[1]} -d ${SOURCES[2]} -l ${TARGETS[0]} -n %(n)d -I %(I)d %(OUTDIR)s ${SOURCES[3]}" % args
     command = env.subst("${QUERY2PHONEFST} -p ${SOURCES[0]} -s ${SOURCES[1]} -d ${SOURCES[2]} -l ${TARGETS[0]} -n %(n)d -I %(I)d %(OUTDIR)s ${SOURCES[3]}" % args, target=target, source=source)
     #command = env.subst("${BABEL_REPO}/KWS/bin64/query2phonefst -s ${SOURCES[1]} -d ${SOURCES[2]} -l ${TARGETS[0]} -I %(I)d %(OUTDIR)s ${SOURCES[3]}" % args, target=target, source=source)
@@ -581,7 +582,10 @@ class CFG():
 
 def run_kws(env, experiment_path, asr_output, *args, **kw):
     cfg = CFG(env)
+    env.Replace(EPSILON_SYMBOLS="'<s>,</s>,~SIL,<HES>'")
 
+    devinfo = env.File("${MODEL_PATH}/devinfo")
+    
     iv_query_terms, oov_query_terms, term_map, word_to_word_fst, kw_file = env.QueryFiles([pjoin(experiment_path, x) for x in ["iv_queries.txt", 
                                                                                                                                "oov_queries.txt",
                                                                                                                                "term_map.txt",
@@ -589,94 +593,72 @@ def run_kws(env, experiment_path, asr_output, *args, **kw):
                                                                                                                                "kwfile.xml"]], 
                                                                                           [cfg.keyword_file, cfg.dictFile, env.Value(str(env["BABEL_ID"])), env.Value("")])
 
-    asr_lattice_path = env.Dir(os.path.join(os.path.dirname(asr_output[0][0].rstr()), "lat")).rstr()
-    full_lattice_list = env.LatticeList(pjoin(experiment_path, "lattice_list.txt"),
-                                        [cfg.dbFile, env.Value(asr_lattice_path)])
-
-    lattice_lists = env.SplitList([pjoin(experiment_path, "lattice_list_%d.txt" % (n + 1)) for n in range(env["KWS_JOB_COUNT"])], full_lattice_list)
-
-
     wordpron = env.WordPronounceSymTable(pjoin(experiment_path, "in_vocabulary_symbol_table.txt"),
                                          cfg.dictFile)
-
 
     vocabulary_symbols = env.CleanPronounceSymTable(pjoin(experiment_path, "cleaned_in_vocabulary_symbol_table.txt"),
                                                     wordpron)
 
-    mdb = env.MungeDatabase(pjoin(experiment_path, "munged_database.txt"),
-                            [cfg.dbFile, full_lattice_list])
-
     padfst = env.BuildPadFST(pjoin(experiment_path, "pad_fst.txt"),
                              wordpron)
 
-    full_data_list = env.CreateDataList(pjoin(experiment_path, "full_data_list.txt"),
-                                        [mdb] + [env.Value({"oldext" : "fsm.gz", 
-                                                            "ext" : "fst",
-                                                            "subdir_style" : "hub4",
-                                                            "LATTICE_DIR" : asr_lattice_path,
-                                                            })], BASE_PATH=experiment_path)        
-
-    data_lists = env.SplitList([pjoin(experiment_path, "data_list_%d.txt" % (n + 1)) for n in range(env["KWS_JOB_COUNT"])], full_data_list)
-
-    ecf_file = env.ECFFile(pjoin(experiment_path, "ecf.xml"), mdb)
-
     p2p_fst = env.FSTCompile(pjoin(experiment_path, "p2p_fst.txt"),
                              [vocabulary_symbols, word_to_word_fst])
-    
-    env.Replace(EPSILON_SYMBOLS="'<s>,</s>,~SIL,<HES>'")
-    wtp_lattices = []
-    for i, (data_list, lattice_list) in enumerate(zip(data_lists, lattice_lists)):
 
-        idx, isym, osym = env.LatticeToIndex([pjoin(experiment_path, "lattices", "index-%d" % (i + 1)),
-                                              pjoin(experiment_path, "lattices", "isym-%d" % (i + 1)),
-                                              pjoin(experiment_path, "lattices", "osym-%d" % (i + 1))],
+    iv_queries = env.QueryToPhoneFST(pjoin(experiment_path, "iv_queries", "iv_query.fst"), 
+                                     [p2p_fst, vocabulary_symbols, cfg.vocab, iv_query_terms, env.Value({"n" : 1, "I" : 1, "OUTDIR" : pjoin(experiment_path, "iv_queries")})])
+
+    oov_queries = env.QueryToPhoneFST(pjoin(experiment_path, "oov_queries", "oov_query.fst"), 
+                                      [p2p_fst, vocabulary_symbols, cfg.vocab, oov_query_terms, env.Value({"n" : 1, "I" : 1, "OUTDIR" : pjoin(experiment_path, "oov_queries")})])
+
+    all_lattices = env.Textfile(os.path.join(experiment_path, "all_lattices.txt"), [x[1] for x in asr_output])
+    full_mdb = env.MungeDatabase(pjoin(experiment_path, "full_munged_database.txt"),
+                            [cfg.dbFile, all_lattices])
+    full_ecf_file = env.ECFFile(pjoin(experiment_path, "full_ecf.xml"), full_mdb)    
+    
+    iv_searches = []
+    oov_searches = []
+    asr_lattice_path = env.Dir(os.path.join(os.path.split(os.path.dirname(asr_output[0][0].rstr()))[0], "lat")).rstr()
+    for ctm, lattice_list in asr_output:
+        i = int(re.match(r".*?(\d+).ctm$", ctm.rstr()).group(1))
+        mdb = env.MungeDatabase(pjoin(experiment_path, "munged_database-%d.txt" % (i)),
+                                [cfg.dbFile, lattice_list])
+        
+        data_list = env.CreateDataList(pjoin(experiment_path, "data_list-%d.txt" % (i)),
+                                       [mdb] + [env.Value({"oldext" : "fsm.gz", 
+                                                           "ext" : "fst",
+                                                           "subdir_style" : "hub4",
+                                                           "LATTICE_DIR" : asr_lattice_path,
+                                                       })], BASE_PATH=experiment_path)
+        ecf_file = env.ECFFile(pjoin(experiment_path, "ecf-%d.xml" % (i)), mdb)
+        
+        idx, isym, osym = env.LatticeToIndex([pjoin(experiment_path, "lattices", "index-%d" % (i)),
+                                              pjoin(experiment_path, "lattices", "isym-%d" % (i)),
+                                              pjoin(experiment_path, "lattices", "osym-%d" % (i))],
                                              [data_list, wordpron, cfg.dictFile])
 
-        #fl = env.GetFileList(pjoin(experiment_path, "file_list-%d.txt" % (i + 1)), 
-        #                     [data_list, wp])
+        iv_searches.append(env.StandardSearch(pjoin(experiment_path, "iv_search_output-%d.txt" % (i)),
+                                              [data_list, idx, isym, osym, iv_queries]))
+        oov_searches.append(env.StandardSearch(pjoin(experiment_path, "oov_search_output-%d.txt" % (i)),
+                                               [data_list, idx, isym, osym, oov_queries]))
 
-        #idx = env.BuildIndex(pjoin(experiment_path, "index-%d.fst" % (i + 1)),
-        #                     fl)
-        
-        wtp_lattices.append((data_list, lattice_list, idx, isym, osym))
+    iv_search_outputs = env.GetFileList(pjoin(experiment_path, "iv_search_outputs.txt"), iv_searches)
+    iv_merged = env.MergeSearchFromParIndex(pjoin(experiment_path, "iv_merged.txt"), iv_search_outputs)
+    iv_sto_norm = env.SumToOneNormalize(pjoin(experiment_path, "iv_sto_norm.txt"), iv_merged)
 
-    merged = {}
-    for query_type, query_file in zip(["in_vocabulary", "out_of_vocabulary"], [iv_query_terms, oov_query_terms]):
-        queries = env.QueryToPhoneFST(pjoin(experiment_path, query_type, "query.fst"), 
-                                      [p2p_fst, isym, cfg.vocab, query_file, env.Value({"n" : 1, "I" : 1, "OUTDIR" : pjoin(experiment_path, query_type, "queries")})])
+    oov_search_outputs = env.GetFileList(pjoin(experiment_path, "oov_search_outputs.txt"), oov_searches)
+    oov_merged = env.MergeSearchFromParIndex(pjoin(experiment_path, "oov_merged.txt"), oov_search_outputs)
+    oov_sto_norm = env.SumToOneNormalize(pjoin(experiment_path, "oov_sto_norm.txt"), oov_merged)
 
-        searches = []
-        for i, (data_list, lattice_list, idx, isym, osym) in enumerate(wtp_lattices):
-            #continue
-            searches.append(env.StandardSearch(pjoin(experiment_path, query_type, "search_output-%d.txt" % (i + 1)),
-                                               [data_list, idx, isym, osym, queries]))
-                                               #, env.Value({"PRECISION" : "'%.4d'", "TITLE" : "std.xml", "LANGUAGE_ID" : babel_id})]))
-                                               
-        continue
+    merged = env.MergeIVOOVCascade(pjoin(experiment_path, "merged.txt"), [iv_sto_norm, oov_sto_norm])
+    # iterate here
+    # merged = env.MergeIVOOVCascade(pjoin(experiment_path, "merged.txt"), [merged, excluded_xml])
 
-        qtl, res_list, res, ures = env.Merge([pjoin(experiment_path, query_type, x) for x in ["ids_to_query_terms.txt", "result_file_list.txt", "search_results.xml", "unique_search_results.xml"]], 
-                                             [query_file] + searches + [env.Value({"MODE" : "merge-default",
-                                                                                   "PADLENGTH" : 4,                                    
-                                                                                   "LANGUAGE_ID" : language_id})])
-
-        merged[query_type] = ures
-        om = env.MergeScores(pjoin(experiment_path, query_type, "results.xml"), 
-                             res)
-
+    dt = env.ApplyRescaledDTPipe(pjoin(experiment_path, "dt.txt"), [devinfo, cfg.dbFile, full_ecf_file, merged])
+    kws_score = env.BabelScorer(pjoin(experiment_path, "score.txt"), [])
+    #kws_score = env.Score(pjoin(experiment_path, "scoring", "Full-Occur-MITLLFA3-AppenWordSeg.sum.txt"), 
+    #                      [normSTO, kw_file, env.Value({"RTTM_FILE" : str(files["RTTM_FILE"]), "ECF_FILE" : ecf_file[0].rstr(), "EXPID" : parameters["EXPID"]})])
     return None
-    iv_oov = env.MergeIVOOV(pjoin(experiment_path, "iv_oov_results.xml"), 
-                            [merged["in_vocabulary"], merged["out_of_vocabulary"], term_map, files["KEYWORDS_FILE"]])
-
-    norm = env.Normalize(pjoin(experiment_path, "norm.kwslist.xml"), 
-                         [iv_oov, kw_file])
-
-    normSTO = env.NormalizeSTO(pjoin(experiment_path, "normSTO.kwslist.xml"), 
-                               norm)
-
-    kws_score = env.Score(pjoin(experiment_path, "scoring", "Full-Occur-MITLLFA3-AppenWordSeg.sum.txt"), 
-                          [normSTO, kw_file, env.Value({"RTTM_FILE" : str(files["RTTM_FILE"]), "ECF_FILE" : ecf_file[0].rstr(), "EXPID" : parameters["EXPID"]})])
-
-    return kws_score
 
 
 def TOOLS_ADD(env):
@@ -688,23 +670,27 @@ def TOOLS_ADD(env):
                 'CreateDataList' : Builder(action=create_data_list),
                 'SplitList' : Builder(action=split_list), 
                 'GetFileList' : Builder(action=get_file_list), 
-                'BuildIndex' : Builder(action=build_index), 
-                'BuildPadFST' : Builder(action=build_pad_fst), 
+                #'BuildIndex' : Builder(action=build_index), 
+                'BuildPadFST' : Builder(action="${BUILDPADFST} ${SOURCE} ${TARGET}"),
                 'FSTCompile' : Builder(action="${FSTCOMPILE} --isymbols=${SOURCES[0]} --osymbols=${SOURCES[0]} ${SOURCES[1]} > ${TARGETS[0]}"), 
                 'QueryToPhoneFST' : Builder(generator=query_to_phone_fst),
-                'Merge' : Builder(action=merge),
-                'MergeScores' : Builder(action=merge_scores),
-                'MergeIVOOV' : Builder(action=merge_iv_oov),
-                'Normalize' : Builder(action=normalize),
-                'NormalizeSTO' : Builder(action=normalize_sum_to_one),
-                'Score' : Builder(action=score),
-                'AlterIVOOV' : Builder(action=alter_iv_oov),
+                #'Merge' : Builder(action=merge),
+                #'MergeScores' : Builder(action=merge_scores),
+                'MergeIVOOVCascade' : Builder(action="perl ${MERGEIVOOVCASCADE} ${SOURCES[0]} ${SOURCES[1]} ${TARGETS[0]}"),
+                #'Normalize' : Builder(action=normalize),
+                #'NormalizeSTO' : Builder(action=normalize_sum_to_one),
+                #'Score' : Builder(action=score),
+                #'AlterIVOOV' : Builder(action=alter_iv_oov),
                 "QueryFiles" : Builder(action=query_files),
                 "DatabaseFile" : Builder(action=database_file),
-                "CollateScores" : Builder(action=collate_scores),
+                #"CollateScores" : Builder(action=collate_scores),
                 "LatticeToIndex" : Builder(action="${LAT2IDX} -D ${SOURCES[0]} -s ${SOURCES[1]} -d ${SOURCES[2]} -S ${EPSILON_SYMBOLS} -I ${TARGETS[0]} -i ${TARGETS[1]} -o ${TARGETS[2]} 2> /dev/null"),
                 "StandardSearch" : Builder(action="${STDSEARCH} -F ${TARGETS[0]} -d ${SOURCES[0]} -i ${SOURCES[1]} -s ${SOURCES[2]} -o ${SOURCES[3]} ${SOURCES[4]} 2> /dev/null"),
-                }
+                "MergeSearchFromParIndex" : Builder(action="${MERGESEARCHFROMPARINDEXPRL} ${SOURCE} > ${TARGET}"),
+                "SumToOneNormalize" : Builder(action="${SUMTOONENORMALIZE} < ${SOURCE} > ${TARGET}"),
+                "ApplyRescaledDTPipe" : Builder(action="python ${APPLYRESCALEDDTPIPE} ${SOURCES[0]} ${SOURCES[1]} ${SOURCES[2]} < ${SOURCES[3]} > ${TARGETS[0]}"),
+                "BabelScorer" : Builder(action="${BABELSCORER} -sys ${SOURCES[0]} -dbDir ${SOURCES[1]} -comp temp/ -res ${TARGETS[0]} -exp ${ID}"),
+    }
     
     env.AddMethod(run_kws, "RunKWS")
     env.Append(BUILDERS=BUILDERS)

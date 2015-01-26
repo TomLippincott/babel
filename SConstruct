@@ -22,6 +22,7 @@ import asr_tools
 import kws_tools
 import vocabulary_tools
 import g2p_tools
+from scons_tools import threaded_run
 
 vars = Variables("custom.py")
 vars.AddVariables(
@@ -100,7 +101,7 @@ vars.AddVariables(
     ("INDUSDB_PATH", "", "${BASE_PATH}/lorelei_resources/IndusDB"),
     ("SEQUITUR_PATH", "", ""),
     ("ATTILA_INTERPRETER", "", "${ATTILA_PATH}/tools/attila/attila"),
-    ("F4DE", "", None),
+    ("F4DE_PATH", "", None),
     ("JAVA_NORM", "", "${BABEL_REPO}/KWS/examples/babel-dryrun/javabin"),
     ("OVERLAY", "", None),
     ("LIBRARY_OVERLAY", "", "${OVERLAY}/lib:${OVERLAY}/lib64:${LORELEI_TOOLS}/boost_1_49_0/stage/lib/"),
@@ -118,7 +119,7 @@ vars.AddVariables(
     ("G2P", "", "g2p.py"),
     ("G2P_PATH", "", "/home/tom/local/python/lib/python2.7/site-packages/"),
     ("BABEL_BIN_PATH", "", "${LORELEI_SVN}/tools/kws/bin64"),
-    ("BABEL_SCRIPT_PATH", "", "${LORELEI_SVN}/tools/kws/bin64"),
+    ("BABEL_SCRIPT_PATH", "", "${LORELEI_SVN}/tools/kws/scripts"),
     ("F4DE", "", "${BABEL_RESOURCES}/F4DE"),
     ("INDUS_DB", "", "${BABEL_RESOURCES}/IndusDB"),
     ("WRD2PHLATTICE", "", "${BABEL_BIN_PATH}/wrd2phlattice"),
@@ -134,8 +135,17 @@ vars.AddVariables(
     ("F4DENORMALIZATIONPY", "", "${BABEL_SCRIPT_PATH}/F4DENormalization.py"),
     ("JAVA_NORM", "", "${BABEL_REPO}/examples/babel-dryrun/javabin"),    
     ("KWSEVALPL", "", "${F4DE}/KWSEval/tools/KWSEval/KWSEval.pl"),    
-
+    ("SUMTOONENORMALIZE", "", "${BABEL_SCRIPT_PATH}/applySTONormalization.prl"),
+    ("MERGEIVOOVCASCADE", "", "${BABEL_SCRIPT_PATH}/merge_iv_oov_cascade.prl"),
+    ("APPLYRESCALEDDTPIPE", "", "${BABEL_SCRIPT_PATH}/applyRescaledDTpipe.py"),
+    ("BABELSCORER", "", "${F4DE_PATH}/bin/BABEL13_Scorer"),
+    
     # all configuration information for ASR
+    BoolVariable("TORQUE_SUBMIT_NODE", "", False),
+    BoolVariable("TORQUE_WORKER_NODE", "", False),
+    BoolVariable("THREADED_SUBMIT_NODE", "", False),
+    BoolVariable("THREADED_WORKER_NODE", "", False),
+    
     ("ASR_JOB_COUNT", "", 1),
     ("KWS_JOB_COUNT", "", 1),
     ("JOB_ID", "", 0),
@@ -192,6 +202,18 @@ env = Environment(variables=vars, ENV=os.environ, TARFLAGS="-c -z", TARSUFFIX=".
                                                                          asr_tools, kws_tools, vocabulary_tools, g2p_tools
                                                                      ]],
                   )
+
+if env["THREADED_SUBMIT_NODE"]:
+    env["BUILDERS"]["ASRTest"] = Builder(action=threaded_run)
+    env["BUILDERS"]["LatticeToIndex"] = Builder(action=threaded_run)
+#elif env["THREADED_WORKER_NODE"]:
+#    pass
+
+Help(vars.GenerateHelpText(env))
+
+
+# env.Tag(node, X=y)
+#"ASRTest" : Builder(action=Action(torque_run, batch_key=True)),
 
 # don't print out lines longer than the terminal width
 def print_cmd_line(s, target, source, env):
@@ -289,8 +311,7 @@ for language, properties in env["LANGUAGES"].iteritems():
     #language_model = env.IBMTrainLanguageModel("work/language_models/${LANGUAGE_NAME}.arpabo.gz", [training_text, Value(2)])
     segmented_language_model = env.IBMTrainLanguageModel("work/asr_input/${LANGUAGE_NAME}/languagemodel_segmented.arpabo.gz", [segmented_training_text, Value(2)])
 
-
-    #morfessor_asr_output = env.RunASR("work/asr_experiments/${LANGUAGE_NAME}/morfessor", segmented_vocabulary, segmented_pronunciations, segmented_language_model)
+    morfessor_asr_output = env.RunASR("work/asr_experiments/${LANGUAGE_NAME}/morfessor", segmented_vocabulary, segmented_pronunciations, segmented_language_model)
 
     #env.RunASR("morfessor", segmented_vocabulary, segmented_pronunciations, segmented_language_model)
     

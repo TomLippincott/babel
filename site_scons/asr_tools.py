@@ -451,14 +451,6 @@ def collate_results(target, source, env):
     return None
 
 
-def plot_probabilities(target, source, env):
-    p = ProbabilityList(meta_open(source[0].rstr()))
-    ps = sorted([x.prob() for x in p.values()])
-    pyplot.plot(ps)
-    pyplot.savefig(target[0].rstr())
-    return None
-
-
 def split_expansion(target, source, env):
     if len(source) == 2:
         limit = source[1].read()
@@ -496,98 +488,6 @@ def transcripts_to_vocabulary(target, source, env):
     return None
 
 
-def plot_reduction(target, source, env):
-    args = source[-1].read()
-    bins = args["bins"]
-    with meta_open(source[-3].rstr()) as in_voc_fd, meta_open(source[-2].rstr()) as all_voc_fd:
-        in_vocabulary = FrequencyList(in_voc_fd).make_conservative()
-        other_vocabulary = FrequencyList(all_voc_fd).make_conservative()
-        all_vocabulary = other_vocabulary.join(in_vocabulary)
-        out_of_vocabulary = set([x for x in all_vocabulary.keys() if x not in in_vocabulary])
-        num_iv_types = len(in_vocabulary)
-        num_iv_tokens = sum([all_vocabulary.get(x, 0) for x in in_vocabulary])
-        num_types = len(all_vocabulary)
-        num_tokens = sum(all_vocabulary.values())
-        num_oov_types = num_types - num_iv_types
-        num_oov_tokens = num_tokens - num_iv_tokens
-        logging.info("%d/%d in-vocabulary types", num_iv_types, num_types)
-        logging.info("%d/%d in-vocabulary tokens", num_iv_tokens, num_tokens)
-        #pyplot.figure(figsize=(8 * 2, 7))
-        pyplot.figure(figsize=(8, 7))
-        for expansion_fname in source[0:-3]:
-            good_tokens = 0
-            good_types = 0
-            token_based = numpy.empty(shape=(bins + 1))
-            type_based = numpy.empty(shape=(bins + 1))
-            token_based[0] = float(0.0)
-            type_based[0] = float(0.0)
-            name = {"morph" : "just Morfessor",
-                    "lm" : "reranking by ngrams",
-                    "lm_avg" : "reranking by ngram average",
-                    "lm_morph" : "reranking by boundary-ngrams",
-                    }[os.path.splitext(os.path.basename(expansion_fname.rstr()))[0]]            
-            method = os.path.dirname(expansion_fname.rstr()).split("/")[-1]
-            name = "%s - %s" % (method, name)
-
-            with meta_open(expansion_fname.rstr()) as expansion_fd:
-                expansions = [(w, p) for w, p in [x.strip().split() for x in expansion_fd]]
-                bin_size = len(expansions) / bins
-                for i in range(bins):
-                    correct = [x for x in expansions[i*bin_size:(i+1)*bin_size] if x[0] in all_vocabulary]
-                    good_types += len(correct)
-                    good_tokens += sum([all_vocabulary.get(x[0], 0) for x in correct])
-                    type_based[i + 1] = good_types
-                    token_based[i + 1] = good_tokens
-                logging.info("%d recovered types", good_types)
-                logging.info("%d recovered tokens", good_tokens)
-            #pyplot.subplot(1, 2, 1)
-            logging.info("%s at %d, %d/%d recovered types", name, (type_based.shape[0] / 2) * bin_size, type_based[type_based.shape[0] / 2], num_oov_types)
-            pyplot.plot(100 * type_based / float(num_oov_types), label=name)
-            #pyplot.subplot(1, 2, 2)
-            #pyplot.plot(token_based, label=name)
-
-        #pyplot.subplot(1, 2, 1)
-        #pyplot.title("Type-based")
-        #pyplot.xlabel("Expansion threshold (in 1000s of words)")        
-        pyplot.ylabel("% OOV reduction")
-        pyplot.legend(loc="lower right", fontsize=10)
-        pyplot.xticks([x * bin_size for x in range(11)], [(x * bin_size) / 10 for x in range(11)])
-        #print type_based.max()
-        yinc = float(type_based.max()) / 9
-        #yinc = 2409.0 / 9
-        #pyplot.yticks([x * yinc for x in range(10)], ["%d" % (int(100 * x * yinc / float(num_oov_types))) for x in range(10)])
-        yinc = 35.0 / 9
-        pyplot.yticks([x * yinc  for x in range(10)], ["%d" % (x * yinc) for x in range(10)])
-        #pyplot.yticks([x * yinc for x in range(10)], ["%d/%d" % (int(100 * x * yinc / float(num_oov_types)), int(100 * x * yinc / float(num_iv_types))) for x in range(10)], fontsize=8)
-        pyplot.grid()
-
-        #pyplot.subplot(1, 2, 2)
-        #pyplot.title("Token-based")
-        pyplot.xlabel("1000s of words")
-        #pyplot.ylabel("%% OOV reduction/IV increase (%d initially OOV tokens)" % (num_oov_tokens))
-        #pyplot.legend(loc="lower right", fontsize=10)
-        #pyplot.xticks([x * bin_size for x in range(11)], [(x * bin_size) / 10 for x in range(11)])
-        #yinc = float(token_based.max()) / 9
-        #pyplot.yticks([x * yinc for x in range(10)], ["%d" % (int(100 * x * yinc / float(num_oov_tokens))) for x in range(10)])
-        #pyplot.yticks([x * yinc for x in range(10)], ["%d/%d" % (int(100 * x * yinc / float(num_oov_tokens)), int(100 * x * yinc / float(num_iv_tokens))) for x in range(10)], fontsize=8)
-        #pyplot.grid()
-
-        pyplot.savefig(target[0].rstr())
-        pyplot.cla()
-        pyplot.clf()
-    return None
-
-
-def plot_reduction_emitter(target, source, env):
-    args = source[-1].read()
-    new_targets = pjoin(os.path.dirname(source[0].rstr()), "%d_reduction.png" % (args["bins"]))
-    return new_targets, source
-
-
-def plot_unigram_probabilities(target, source, env):
-    return None
-
-
 def split_train_dev(target, source, env):
     data_path = source[0].rstr()
     for type, out_fname in zip(["training", "sub-train", "dev"], target):
@@ -616,52 +516,6 @@ def top_words(target, source, env):
     return None
 
 
-# def run_g2p(target, source, env):
-#     with temp_file() as tfname, meta_open(source[0].rstr()) as pl_fd:
-#         words = set([x.split()[0].split("(")[0] for x in pl_fd])
-#         with meta_open(tfname, "w") as t_fd:
-#             t_fd.write("\n".join(words))
-#         out, err, success = run_command(env.subst("%s %s/bin/g2p.py --model %s --encoding=%s --apply %s --variants-mass=%f  --variants-number=%d" % (env["PYTHON"], env["OVERLAY"], source[1].rstr(), "utf-8", tfname, .9, 4)),
-#                                         env={"PYTHONPATH" : env.subst("${OVERLAY}/lib/python2.7/site-packages")},
-#                                         )
-#         if not success:
-#             return err
-#         else:
-#             with meta_open(target[0].rstr(), "w") as out_fd:
-#                 out_fd.write(out)
-#     return None
-
-
-# def g2p_to_babel(target, source, env):
-#     # include accuracy
-#     swap = source[1].read()
-#     myWords = {}
-#     with meta_open(source[0].rstr()) as in_fd, meta_open(target[0].rstr(), "w") as out_fd:
-#         for tokens in [x.strip().replace('\t\t','\t').split('\t') for x in in_fd]:
-#             if len(tokens) > 3:
-#                 word, pronunciation = tokens[0], tokens[-1]
-#                 pronunciation = pronunciation.replace('\"', '').replace('%','').replace('.','').strip().replace('#', '').replace('  ',' ').replace('  ',' ').replace('  ',' ')
-#                 for k, v in swap.iteritems():
-#                     pronunciation = pronunciation.replace(k, v)
-
-#                 phonemes = pronunciation.split(" ")
-#                 if len(phonemes) > 1:
-#                     new_phonemes = [phonemes[0], "[ wb ]"] + phonemes[1:] + ["[ wb ]"]
-#                     new_pronunciation = " ".join(new_phonemes)
-#                 elif ':' in phonemes[0] or phonemes[0] in ['a', 'e', 'o']:
-#                     new_pronunciation = "%s [ wb ]" % (pronunciation)
-#                 else:
-#                     new_pronunciation = pronunciation
-#                 new_pronunciation = new_pronunciation.strip()
-#                 myWords[word] = myWords.get(word, []) + [new_pronunciation]
-#             else:
-#                 logging.info("couldn't process G2P output: %s", "\t".join(tokens))
-#         for word in myWords.keys():
-#             for count, pronun in enumerate(myWords[word]):
-#                 out_fd.write("%s(%.2d) %s\n" % (word, count, pronun))
-#     return None
-
-
 def pronunciation_performance(target, source, env):
     with meta_open(source[0].rstr()) as gold_fd, meta_open(source[1].rstr()) as gen_fd:
         tp, fp, fn = 0, 0, 0
@@ -686,6 +540,7 @@ def pronunciation_performance(target, source, env):
         with meta_open(target[0].rstr(), "w") as ofd:
             ofd.write("%f %f %f\n" % (prec, rec, f))
     return None
+
 
 class CFG():
     dictFile = '${PRONUNCIATIONS_FILE}'
@@ -770,13 +625,11 @@ def asr_construct(target, source, env):
     se.dnet.write(target[0].rstr())
     return None
 
+
 def asr_test(target, source, env):
     #
     # based on Zulu LLP
     #
-    with meta_open(target[0].rstr(), "w") as ofd:
-        return None
-
     dnet, vocabulary, pronunciations, language_model, args = source
     args = args.read()
     out_path, tail = os.path.split(os.path.dirname(target[0].rstr()))
@@ -829,7 +682,7 @@ def asr_test(target, source, env):
 
     if genLat:
         misc.makeDir(cfg.latDir)
-    with open(target[0].rstr(), "w") as ofd:
+    with open(target[0].rstr(), "w") as ofd, open(target[1].rstr(), "w") as lattice_list_ofd:
         for utt in cfg.db:
             cfg.nn.eval(utt)
             se.search()
@@ -837,41 +690,30 @@ def asr_test(target, source, env):
             txt    = se.getHyp().strip()
             hyp    = se.getCTM(key, cfg.db.getFrom(utt))
             tscore = se.getScore()
-            #print utt,'score= %.5f frameN= %d'%(tscore, se.dnet.state.frameN)
-            #print utt,'words=',txt
             for c in hyp:
                 print >>ofd,c
             if genLat:
                 se.rescore(rescoreBeam)
-                se.lat.write(os.path.join(cfg.latDir,"%s.fsm.gz" % utt), cfg.db.getFrom(utt))
+                fname = os.path.abspath(os.path.join(cfg.latDir,"%s.fsm.gz" % utt))
+                lattice_list_ofd.write("%s\n" % (fname))
+                se.lat.write(fname, cfg.db.getFrom(utt))
     return None
 
-def asr_dummy(target, source, env):
-    time.sleep(10)
-    with meta_open(target[0].rstr(), "w") as ofd:
-        ofd.write("test")
-    return None
 
 def run_asr(env, root_path, vocabulary, pronunciations, language_model, *args, **kw):
     env.Replace(ROOT_PATH=root_path)
     dnet = env.ASRConstruct("${ROOT_PATH}/dnet.bin.gz", [vocabulary, pronunciations, language_model])
     tests = []
-    for i in range(env["ASR_JOB_COUNT"]):
-        tests.append(env.ASRTest(["${ROOT_PATH}/ctm/%d.ctm" % i],
+    for i in range(10): #env["ASR_JOB_COUNT"]):
+        tests.append(env.ASRTest(["${ROOT_PATH}/ctm/%d.ctm" % i, "${ROOT_PATH}/lattice_list_%d.txt" % i],
                                  [dnet, vocabulary, pronunciations, language_model, env.Value({"JOB_ID" : i})]))
-    return [dnet] + tests
+    return tests
 
 
 def TOOLS_ADD(env):
-    env["FLOOKUP"] = "flookup"
     BUILDERS = {"ASRConstruct" : Builder(action=asr_construct),
+                "ASRTest" : Builder(action=asr_test),
                 "IBMTrainLanguageModel" : Builder(action=ibm_train_language_model),
                 }
-    if env["HAS_TORQUE"]:
-        BUILDERS["ASRTest"] = Builder(action=Action(torque_run, batch_key=True))
-    elif env["IS_THREADED"]:
-        BUILDERS["ASRTest"] = Builder(action=threaded_run)
-    else:
-        BUILDERS["ASRTest"] = Builder(action=asr_test)
     env.Append(BUILDERS=BUILDERS)
     env.AddMethod(run_asr, "RunASR")
