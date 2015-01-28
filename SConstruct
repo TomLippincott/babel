@@ -23,6 +23,7 @@ import kws_tools
 import vocabulary_tools
 import g2p_tools
 from scons_tools import threaded_run
+from torque_tools import torque_run
 
 vars = Variables("custom.py")
 vars.AddVariables(
@@ -203,17 +204,22 @@ env = Environment(variables=vars, ENV=os.environ, TARFLAGS="-c -z", TARSUFFIX=".
                                                                      ]],
                   )
 
+
+long_running = ["ASRTest", "LatticeToIndex", "TrainMorfessor", "RunPYCFG"]
 if env["THREADED_SUBMIT_NODE"]:
-    env["BUILDERS"]["ASRTest"] = Builder(action=threaded_run)
-    env["BUILDERS"]["LatticeToIndex"] = Builder(action=threaded_run)
-#elif env["THREADED_WORKER_NODE"]:
-#    pass
+    for b in long_running:
+        env["BUILDERS"][b] = Builder(action=threaded_run)
+elif env["TORQUE_SUBMIT_NODE"]:
+    for b in long_running:
+        env["BUILDERS"][b] = Builder(action=Action(torque_run, batch_key=True))
+
 
 Help(vars.GenerateHelpText(env))
 
 
 # env.Tag(node, X=y)
 #"ASRTest" : Builder(action=Action(torque_run, batch_key=True)),
+
 
 # don't print out lines longer than the terminal width
 def print_cmd_line(s, target, source, env):
@@ -225,19 +231,32 @@ def print_cmd_line(s, target, source, env):
 env['PRINT_CMD_LINE_FUNC'] = print_cmd_line
 env.Decider("timestamp-newer")
 
-for language, properties in env["LANGUAGES"].iteritems():
 
+for language, properties in env["LANGUAGES"].iteritems():
+    # for Zulu, replace "(\S)-(\S)" with "\1=\2"
     env.Replace(BABEL_ID=properties["BABEL_ID"])
     env.Replace(LANGUAGE_NAME=language)
     env.Replace(LOCALE=properties.get("LOCALE"))
-    
-    # combined_text = env.CollectText("work/texts/${LANGUAGE_NAME}/combined.txt.gz",
-    #                                 [env.subst("${STRIPPED_LANGUAGE_PACK_PATH}/${BABEL_ID}.tgz"), env.Value(".*(sub-train|dev)/transcription.*txt")],
-    #                             )
 
     training_text = env.CollectText("work/texts/${LANGUAGE_NAME}/training_text.txt.gz",
                                     [env.subst("${STRIPPED_LANGUAGE_PACK_PATH}/${BABEL_ID}.tgz"), env.Value(".*sub-train/transcription.*txt")],
                                     )
+    
+    if os.path.exists(env.subst("data/${BABEL_ID}.txt")):
+        #arguments = Value({"LANGUAGE" : language, "SSN" : "None", "RUN" : str(run)})
+        segs, models = env.TrainMorfessor(["work/web_data_morphology/${LANGUAGE_NAME}_morfessor.xml.gz",
+                                           "work/web_data_morphology/${LANGUAGE_NAME}_morfessor.model"], "data/${BABEL_ID}.txt")
+        characters = env.CharacterProductions("work/character_productions/${LANGUAGE_NAME}.txt", "data/${BABEL_ID}.txt")
+        cfg = env.ComposeGrammars("work/web_data_morphology/${LANGUAGE_NAME}_cfg.txt", ["data/grammar_templates/simple_prefix_suffix.txt", characters])
+        data = env.MorphologyData("work/web_data_morphology/${LANGUAGE_NAME}_data.txt", "data/${BABEL_ID}.txt")
+        #parses, grammar, trace_file =
+        env.RunPYCFG("work/web_data_morphology/${LANGUAGE_NAME}_output.txt", [cfg, data])
+    
+        #continue
+    # combined_text = env.CollectText("work/texts/${LANGUAGE_NAME}/combined.txt.gz",
+    #                                 [env.subst("${STRIPPED_LANGUAGE_PACK_PATH}/${BABEL_ID}.tgz"), env.Value(".*(sub-train|dev)/transcription.*txt")],
+    #                             )
+
 
     # dev_text = env.CollectText("work/texts/${LANGUAGE_NAME}/dev_text.txt.gz",
     #                            [env.subst("${STRIPPED_LANGUAGE_PACK_PATH}/${BABEL_ID}.tgz"), env.Value(".*dev/transcription.*txt")],
@@ -271,10 +290,10 @@ for language, properties in env["LANGUAGES"].iteritems():
     baseline_language_model = env.File("${IBM_MODELS}/${BABEL_ID}/LLP/models/lm.2gm.arpabo.gz")
     
     baseline_asr_output = env.RunASR("work/asr_experiments/${LANGUAGE_NAME}/baseline", baseline_vocabulary, baseline_pronunciations, baseline_language_model)
-    kws_output = env.RunKWS("work/kws_experiments/${LANGUAGE_NAME}/baseline", baseline_asr_output)
-    continue
+    baseline_kws_output = env.RunKWS("work/kws_experiments/${LANGUAGE_NAME}/baseline", baseline_asr_output)
 
-    
+
+    continue
     #elif os.path.exists(env.subst("${LANGUAGE_PACK_PATH}/${BABEL_ID}.tgz")):
     full_transcripts = env.ExtractTranscripts("work/full_transcripts/${LANGUAGE_NAME}.xml.gz", ["${STRIPPED_LANGUAGE_PACK_PATH}/${BABEL_ID}.tgz", Value({})])
     limited_transcripts = env.ExtractTranscripts("work/training_transcripts/${LANGUAGE_NAME}_training.xml.gz", ["${STRIPPED_LANGUAGE_PACK_PATH}/${BABEL_ID}.tgz",
@@ -308,22 +327,35 @@ for language, properties in env["LANGUAGES"].iteritems():
         [morph_pronunciations, pronunciations_file])
 
     segmented_training_text = env.SegmentTranscripts("work/segmented_training/${LANGUAGE_NAME}.txt.gz", [training_text, morfessor])
-    #language_model = env.IBMTrainLanguageModel("work/language_models/${LANGUAGE_NAME}.arpabo.gz", [training_text, Value(2)])
     segmented_language_model = env.IBMTrainLanguageModel("work/asr_input/${LANGUAGE_NAME}/languagemodel_segmented.arpabo.gz", [segmented_training_text, Value(2)])
 
     morfessor_asr_output = env.RunASR("work/asr_experiments/${LANGUAGE_NAME}/morfessor", segmented_vocabulary, segmented_pronunciations, segmented_language_model)
-
-    #env.RunASR("morfessor", segmented_vocabulary, segmented_pronunciations, segmented_language_model)
+    morfessor_kws_output = env.RunKWS("work/kws_experiments/${LANGUAGE_NAME}/morfessor", morfessor_asr_output)
     
+    #
+    # Adaptor Grammar Experiments
+    #
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    
     
     #query_file = env.QueryFile() # just search terms, one per line
     #word_dictionary = env.WordDictionary() # running(01) runn+ +ing
     #hyb_dict = env.HybDict() # runn+(01) runn+
-    
-
-
 
     #seg_transcripts, seg_vocabulary, seg_pronunciations, seg_language_model = env.ApplySegmentations(morfessor, training_vocabulary_file, pronunciations_file)
     # IBMTrainLanguageModel
