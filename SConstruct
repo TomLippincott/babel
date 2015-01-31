@@ -29,76 +29,31 @@ vars = Variables("custom.py")
 vars.AddVariables(
     ("OUTPUT_WIDTH", "", 130),
     ("LOCAL_PATH", "", False),
-    ("LANGUAGES", "", {}),
     BoolVariable("DEBUG", "", True),
-    BoolVariable("HAS_TORQUE", "", False),
-    ("ANNEAL_INITIAL", "", 5),
-    ("ANNEAL_FINAL", "", 1),
-    ("ANNEAL_ITERATIONS", "", 0),
-    ("LANGUAGE_PACK_PATH", "", None),
-    ("STRIPPED_LANGUAGE_PACK_PATH", "", None),
     ("BABEL_DATA_PATH", "", None),
-    ("RUNS", "", 1),
-    ("TORQUE_INTERVAL", "", 60),
-
-    ("INDUSDB_PATH", "", None),
-
-    ("CABAL", "", "/home/tom/.cabal"),
-    ("PYCFG_PATH", "", ""),
-    ("MAXIMUM_SENTENCE_LENGTH", "", 20),
-    ("HASKELL_PATH", "", ""),
-    ("PENN_TREEBANK_PATH", "", ""),
-    ("LPSOLVE_PATH", "", ""),
     
-    # parameters shared by all models
-    ("NUM_ITERATIONS", "", 1),
-    ("NUM_SAMPLES", "", 1),
-    #("SAVE_EVERY", "", 1),
-    ("TOKEN_BASED", "", [True, False]),
-
-    # tagging parameters
-    ("NUM_TAGS", "", 45),
-    ("MARKOV", "", 1),
-    ("TRANSITION_PRIOR", "", .1),
-    ("EMISSION_PRIOR", "", .1),
-    BoolVariable("SYMMETRIC_TRANSITION_PRIOR", "", True),
-    BoolVariable("SYMMETRIC_EMISSION_PRIOR", "", True),
-
-
-    # morphology parameters
-    ("PREFIX_PRIOR", "", 1),
-    ("SUFFIX_PRIOR", "", 1),
-    ("SUBMORPH_PRIOR", "", 1),
-    ("WORD_PRIOR", "", 1),
-    ("TAG_PRIOR", "", .1),
-    ("BASE_PRIOR", "", 1),    
-    ("ADAPTOR_PRIOR_A", "", 0),
-    ("ADAPTOR_PRIOR_B", "", 100),
-    ("CACHE_PROBABILITY", "", 100),
-    ("RULE_PRIOR", "", 1),
-
     # these variables determine what experiments are performed
     ("LANGUAGES", "", {}),
-    ("RUN_ASR", "", False),
-    ("RUN_KWS", "", False),
-    ("EVALUATE_PRONUNCIATIONS", "", False),
-    ("EXPANSION_SIZES", "", []),
-    ("EXPANSION_WEIGHTS", "", []),
 
     # these variables determine how parallelism is exploited
-    BoolVariable("HAS_TORQUE", "", True),
-    BoolVariable("IS_THREADED", "", True),
-    ("MAXIMUM_LOCAL_JOBS", "", 4),
-    ("MAXIMUM_TORQUE_JOBS", "", 200),
+    BoolVariable("TORQUE_SUBMIT_NODE", "", False),
+    BoolVariable("TORQUE_WORKER_NODE", "", False),
+    ("TORQUE_TIME", "", "11:30:00"),
+    ("TORQUE_MEMORY", "", "3500mb"),
+    ("TORQUE_INTERVAL", "", 60),
+    BoolVariable("THREADED_SUBMIT_NODE", "", False),
+    BoolVariable("THREADED_WORKER_NODE", "", False),    
+    ("ASR_JOB_COUNT", "", 1),
+    ("KWS_JOB_COUNT", "", 1),
+    ("JOB_ID", "", 0),
 
     # these variables define the locations of various tools and data
     ("BASE_PATH", "", None),
+    ("LOCAL_PATH", "", "${BASE_PATH}/local"),
     ("OVERLAY", "", "${BASE_PATH}/local"),
-    #("LANGUAGE_PACKS", "", "${BASE_PATH}/language_transcripts"),
     ("IBM_MODELS", "", "${BASE_PATH}/ibm_models"),
     ("LORELEI_SVN", "", "${BASE_PATH}/lorelei_svn"),
     ("ATTILA_PATH", "", "${BASE_PATH}/VT-2-5-babel"),
-    ("VOCABULARY_EXPANSION_PATH", "", "${BASE_PATH}/vocabulary_expansions"),
     ("INDUSDB_PATH", "", "${BASE_PATH}/lorelei_resources/IndusDB"),
     ("SEQUITUR_PATH", "", ""),
     ("ATTILA_INTERPRETER", "", "${ATTILA_PATH}/tools/attila/attila"),
@@ -114,6 +69,9 @@ vars.AddVariables(
     ("LORELEI_TOOLS", "", "${BASE_PATH}/lorelei_tools"),
     
     # these variables all have default definitions in terms of the previous, but may be overridden as needed
+    ("LANGUAGE_PACK_PATH", "", "${BASE_PATH}/language_packs"),
+    ("STRIPPED_LANGUAGE_PACK_PATH", "", "${BASE_PATH}/stripped_language_packs"),
+    ("BABEL_RESOURCES", "", "${BASE_PATH}/lorelei_resources"),
     ("PYTHON", "", "/usr/bin/python"),
     ("PERL", "", "/usr/bin/perl"),    
     ("PERL_LIBRARIES", "", os.environ.get("PERL5LIB", "")),
@@ -121,7 +79,7 @@ vars.AddVariables(
     ("G2P_PATH", "", "/home/tom/local/python/lib/python2.7/site-packages/"),
     ("BABEL_BIN_PATH", "", "${LORELEI_SVN}/tools/kws/bin64"),
     ("BABEL_SCRIPT_PATH", "", "${LORELEI_SVN}/tools/kws/scripts"),
-    ("F4DE", "", "${BABEL_RESOURCES}/F4DE"),
+    ("F4DE_PATH", "", "${BABEL_RESOURCES}/F4DE"),
     ("INDUS_DB", "", "${BABEL_RESOURCES}/IndusDB"),
     ("WRD2PHLATTICE", "", "${BABEL_BIN_PATH}/wrd2phlattice"),
     ("BUILDINDEX", "", "${BABEL_BIN_PATH}/buildindex"),
@@ -139,18 +97,9 @@ vars.AddVariables(
     ("SUMTOONENORMALIZE", "", "${BABEL_SCRIPT_PATH}/applySTONormalization.prl"),
     ("MERGEIVOOVCASCADE", "", "${BABEL_SCRIPT_PATH}/merge_iv_oov_cascade.prl"),
     ("APPLYRESCALEDDTPIPE", "", "${BABEL_SCRIPT_PATH}/applyRescaledDTpipe.py"),
-    ("BABELSCORER", "", "${F4DE_PATH}/bin/BABEL13_Scorer"),
+    ("BABELSCORER", "", "${F4DE_PATH}/KWSEval/tools/KWSEval/KWSEval.pl"),
     
     # all configuration information for ASR
-    BoolVariable("TORQUE_SUBMIT_NODE", "", False),
-    BoolVariable("TORQUE_WORKER_NODE", "", False),
-    BoolVariable("THREADED_SUBMIT_NODE", "", False),
-    BoolVariable("THREADED_WORKER_NODE", "", False),
-    
-    ("ASR_JOB_COUNT", "", 1),
-    ("KWS_JOB_COUNT", "", 1),
-    ("JOB_ID", "", 0),
-    
     ("MODEL_PATH", "", "${IBM_MODELS}/${BABEL_ID}/LLP/models"),
     ("PHONE_FILE", "", "${MODEL_PATH}/pnsp"),
     ("PHONE_SET_FILE", "", "${MODEL_PATH}/phonesset"),
@@ -168,29 +117,18 @@ vars.AddVariables(
     ("PRIORS_FILE", "", "${MODEL_PATH}/priors"),
     
     ("OUTPUT_PATH", "", "work/asr/${LANGUAGE_NAME}/${EXPERIMENT_NAME}"),
-    #("WARP_FILE", "", "${OUTPUT_PATH}/warp.lst.${JOB_ID}"),
     ("WARP_FILE", "", "${IBM_MODELS}/${BABEL_ID}/LLP/adapt/warp.lst"),
     ("GRAPH_FILE", "", "${OUTPUT_PATH}/dnet.bin.gz"),
     ("CTM_PATH", "", "${OUTPUT_PATH}/ctm"),
     ("LATTICE_PATH", "", "${OUTPUT_PATH}/lat"),
     ("TEXT_PATH", "", "${OUTPUT_PATH}/text"),
     ("PCM_PATH", "", "${LANGUAGE_PACK_PATH}/${BABEL_ID}"),
-    # ("TRFS_FILE", "", "${MODEL_PATH}/phoneset"),
-    # ("TR_FILE", "", "${MODEL_PATH}/phoneset"),
-    # ("CTX_FILE", "", "${MODEL_PATH}/phoneset"),
-    # ("GS_FILE", "", "${MODEL_PATH}/phoneset"),
-    # ("MS_FILE", "", "${MODEL_PATH}/phoneset"),
-    # ("FS_FILE", "", "${MODEL_PATH}/phoneset"),
-
-    # ("LAT_OPATH", "", "${MODEL_PATH}/phoneset"),
-    # ("TXT_PATH", "", "${MODEL_PATH}/phoneset"),
     ("DATABASE_FILE", "", "${IBM_MODELS}/${BABEL_ID}/LLP/segment/*db"),
-     #"${LORELEI_SVN}/${BABEL_ID}/LimitedLP/asr/genSeg/babel${BABEL_ID}.dev.seg.*db"),
     ("CMS_PATH", "", "${IBM_MODELS}/${BABEL_ID}/LLP/adapt/cms"),
     ("FMLLR_PATH", "", "${IBM_MODELS}/${BABEL_ID}/LLP/adapt/fmllr"),
-
-
-    ("KEYWORD_FILE", "", "${INDUSDB_PATH}/*babel${BABEL_ID}*.kwlist.xml"),
+    ("ECF_FILE", "", "${INDUSDB_PATH}/*babel${BABEL_ID}*conv-dev/*.scoring.ecf.xml"),
+    ("KEYWORD_FILE", "", "${INDUSDB_PATH}/*babel${BABEL_ID}*conv-dev/*.kwlist.xml"),
+    ("RTTM_FILE", "", "${INDUSDB_PATH}/*babel${BABEL_ID}*conv-dev/*mit*rttm"),
 )
 
 # initialize logging system
@@ -204,7 +142,7 @@ env = Environment(variables=vars, ENV=os.environ, TARFLAGS="-c -z", TARSUFFIX=".
                                                                      ]],
                   )
 
-
+# if available, replace expensive builders with parallel alternatives
 long_running = ["ASRTest", "LatticeToIndex", "TrainMorfessor", "RunPYCFG"]
 if env["THREADED_SUBMIT_NODE"]:
     for b in long_running:
@@ -212,7 +150,9 @@ if env["THREADED_SUBMIT_NODE"]:
 elif env["TORQUE_SUBMIT_NODE"]:
     for b in long_running:
         env["BUILDERS"][b] = Builder(action=Action(torque_run, batch_key=True))
-
+elif env["TORQUE_WORKER_NODE"] or env["THREADED_WORKER_NODE"]:
+    env.SConsignFile(".sconsign2")
+    pass
 
 Help(vars.GenerateHelpText(env))
 

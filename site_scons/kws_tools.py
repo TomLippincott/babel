@@ -20,6 +20,29 @@ from common_tools import meta_open, temp_dir
 from babel import ProbabilityList, Arpabo, Pronunciations, Vocabulary
 
 
+class CFG():
+    dbFile = '${DATABASE_FILE}'
+    dictFile = '${PRONUNCIATIONS_FILE}'
+    vocab = '${VOCABULARY_FILE}'
+    ctmDir = '${CTM_PATH}'
+    latDir = '${LATTICE_PATH}'
+    ecf_file = '${ECF_FILE}'
+    keyword_file = '${KEYWORD_FILE}'    
+    rttm_file = '${RTTM_FILE}'
+    def __str__(self):
+        return "\n".join(["%s = %s" % (k, getattr(self, k)) for k in dir(self) if not k.startswith("_")])
+    def __init__(self, env, **args):
+        for k in [x for x in dir(self) if not x.startswith("_")]:
+            current = getattr(self, k)
+            if isinstance(current, basestring) and "FILE" in current:
+                try:
+                    setattr(self, k, os.path.abspath(env.Glob(env.subst(current))[0].rstr()))
+                except:
+                    setattr(self, k, os.path.abspath(env.subst(current)))
+            else:
+                setattr(self, k, env.subst(current))
+
+
 def query_files(target, source, env):
     # OUTPUT:
     # iv oov map w2w <- 
@@ -49,7 +72,6 @@ def query_files(target, source, env):
             keyword_xml.write(kw_ofd) #.write(et.tostring(keyword_xml.))
     return None
 
-
 def ecf_file(target, source, env):
     with open(source[0].rstr()) as fd:
         files = [(fname, int(chan), float(begin), float(end)) for fname, num, sph, chan, begin, end in [line.split() for line in fd]]
@@ -71,7 +93,6 @@ def ecf_file(target, source, env):
             ofd.write(et.tostring(tb.close()))
     return None
 
-
 def word_pronounce_sym_table(target, source, env):
     """
     convert dictionary format:
@@ -91,28 +112,15 @@ def word_pronounce_sym_table(target, source, env):
     ofd.close()
     return None
 
-
 def clean_pronounce_sym_table(target, source, env):
     """
     Deduplicates lexicon, removes "(NUM)" suffixes, and adds <query> entry.
     """
     with meta_open(source[0].rstr()) as ifd:
         words = set([re.match(r"^(.*)\(\d+\)\s+.*$", l).groups()[0] for l in ifd if not re.match(r"^(\<|\~).*", l)])
-        #ofd.write("\n".join([]))
-        # for line in sorted(meta_open(source[0].rstr())):
-        #     if line.startswith("<") or line.startswith("~"): #"<EPSILON>"):
-        #         continue
-        #         word = "<EPSILON>"
-        #     else:
-        #         word = re.match(r"^(.*)\(\d+\)\s+.*$", line).groups()[0]
-        #     if word not in seen:
-        #         ofd.write("%s\t%d\n" % (word, len(seen)))
-        #         seen.add(word)
-        #ofd.write("<query>\t%d\n" % (len(seen)))
     with meta_open(target[0].rstr(), "w") as ofd:
         ofd.write("\n".join(["%s\t%d" % (w, i) for i, w in enumerate(["<EPSILON>", "</s>", "<HES>", "<s>", "~SIL"] + sorted(words) + ["<query>"])]) + "\n")
     return None
-
 
 def munge_dbfile(target, source, env):
     """
@@ -129,7 +137,6 @@ def munge_dbfile(target, source, env):
             ofd.write(" ".join(toks[0:4] + ["0.0", toks[5]]) + "\n")
     ofd.close()
     return None
-
 
 def create_data_list(target, source, env):
     """
@@ -160,36 +167,12 @@ def create_data_list(target, source, env):
     ofd.close()
     return None
 
-
 def get_file_list(target, source, env):
     """
     """
     with meta_open(target[0].rstr(), "w") as ofd:
         ofd.write("\n".join([os.path.abspath(x.rstr()) for x in source]) + "\n")
     return None
-
-
-class CFG():
-    dbFile = '${DATABASE_FILE}'
-    dictFile = '${PRONUNCIATIONS_FILE}'
-    vocab = '${VOCABULARY_FILE}'
-    ctmDir = '${CTM_PATH}'
-    latDir = '${LATTICE_PATH}'
-    ecf_file = '${ECF_FILE}'
-    keyword_file = '${KEYWORD_FILE}'
-    def __str__(self):
-        return "\n".join(["%s = %s" % (k, getattr(self, k)) for k in dir(self) if not k.startswith("_")])
-    def __init__(self, env, **args):
-        for k in [x for x in dir(self) if not x.startswith("_")]:
-            current = getattr(self, k)
-            if isinstance(current, basestring) and "FILE" in current:
-                try:
-                    setattr(self, k, os.path.abspath(env.Glob(env.subst(current))[0].rstr()))
-                except:
-                    setattr(self, k, os.path.abspath(env.subst(current)))
-            else:
-                setattr(self, k, env.subst(current))
-
 
 def run_kws(env, experiment_path, asr_output, *args, **kw):
     cfg = CFG(env)
@@ -227,6 +210,8 @@ def run_kws(env, experiment_path, asr_output, *args, **kw):
     full_mdb = env.MungeDatabase(pjoin(experiment_path, "full_munged_database.txt"),
                             [cfg.dbFile, all_lattices])
     full_ecf_file = env.ECFFile(pjoin(experiment_path, "full_ecf.xml"), full_mdb)    
+
+    xml_template = env.File("${LORELEI_SVN}/${BABEL_ID}/LimitedLP/kws-resources/kws-resources-IndusDB.20140206.NWAY.dev/template.word.xml")
     
     iv_searches = []
     oov_searches = []
@@ -250,9 +235,9 @@ def run_kws(env, experiment_path, asr_output, *args, **kw):
                                              [data_list, wordpron, cfg.dictFile])
 
         iv_searches.append(env.StandardSearch(pjoin(experiment_path, "iv_search_output-%d.txt" % (i)),
-                                              [data_list, idx, isym, osym, iv_queries]))
+                                              [xml_template, data_list, idx, isym, osym, iv_queries]))
         oov_searches.append(env.StandardSearch(pjoin(experiment_path, "oov_search_output-%d.txt" % (i)),
-                                               [data_list, idx, isym, osym, oov_queries]))
+                                               [xml_template, data_list, idx, isym, osym, oov_queries]))
 
     iv_search_outputs = env.GetFileList(pjoin(experiment_path, "iv_search_outputs.txt"), iv_searches)
     iv_merged = env.MergeSearchFromParIndex(pjoin(experiment_path, "iv_merged.txt"), iv_search_outputs)
@@ -266,29 +251,30 @@ def run_kws(env, experiment_path, asr_output, *args, **kw):
     # iterate here
     # merged = env.MergeIVOOVCascade(pjoin(experiment_path, "merged.txt"), [merged, excluded_xml])
 
-    dt = env.ApplyRescaledDTPipe(pjoin(experiment_path, "dt.txt"), [devinfo, cfg.dbFile, full_ecf_file, merged])
-    #kws_score = env.BabelScorer(pjoin(experiment_path, "score.txt"), [])
+    dt = env.ApplyRescaledDTPipe(pjoin(experiment_path, "dt.kwslist.xml"), [devinfo, cfg.dbFile, full_ecf_file, merged])
+    kws_score = env.BabelScorer([pjoin(experiment_path, "score.%s" % x) for x in ["alignment.csv", "bsum.txt", "sum.txt"]],
+                                [cfg.ecf_file, cfg.rttm_file, cfg.keyword_file, dt])
     return None
 
-
 def TOOLS_ADD(env):
-    BUILDERS = {"ECFFile" : Builder(action=ecf_file),
-                "WordPronounceSymTable" : Builder(action=word_pronounce_sym_table), 
-                "CleanPronounceSymTable" : Builder(action=clean_pronounce_sym_table), 
-                "MungeDatabase" : Builder(action=munge_dbfile), 
-                "CreateDataList" : Builder(action=create_data_list),
-                "GetFileList" : Builder(action=get_file_list), 
-                "QueryFiles" : Builder(action=query_files),
-                "BuildPadFST" : Builder(action="${BUILDPADFST} ${SOURCE} ${TARGET}"),
-                "FSTCompile" : Builder(action="${FSTCOMPILE} --isymbols=${SOURCES[0]} --osymbols=${SOURCES[0]} ${SOURCES[1]} > ${TARGETS[0]}"), 
-                "QueryToPhoneFST" : Builder(action="${QUERY2PHONEFST} -p ${SOURCES[0]} -s ${SOURCES[1]} -d ${SOURCES[2]} -l ${TARGETS[0]} -n ${n} -I ${I} ${OUTDIR} ${SOURCES[3]}"),
-                "MergeIVOOVCascade" : Builder(action="perl ${MERGEIVOOVCASCADE} ${SOURCES[0]} ${SOURCES[1]} ${TARGETS[0]}"),
-                "LatticeToIndex" : Builder(action="${LAT2IDX} -D ${SOURCES[0]} -s ${SOURCES[1]} -d ${SOURCES[2]} -S ${EPSILON_SYMBOLS} -I ${TARGETS[0]} -i ${TARGETS[1]} -o ${TARGETS[2]} 2> /dev/null"),
-                "StandardSearch" : Builder(action="${STDSEARCH} -F ${TARGETS[0]} -d ${SOURCES[0]} -i ${SOURCES[1]} -s ${SOURCES[2]} -o ${SOURCES[3]} ${SOURCES[4]} 2> /dev/null"),
-                "MergeSearchFromParIndex" : Builder(action="${MERGESEARCHFROMPARINDEXPRL} ${SOURCE} > ${TARGET}"),
-                "SumToOneNormalize" : Builder(action="${SUMTOONENORMALIZE} < ${SOURCE} > ${TARGET}"),
-                "ApplyRescaledDTPipe" : Builder(action="python ${APPLYRESCALEDDTPIPE} ${SOURCES[0]} ${SOURCES[1]} ${SOURCES[2]} < ${SOURCES[3]} > ${TARGETS[0]}"),
-                "BabelScorer" : Builder(action="${BABELSCORER} -sys ${SOURCES[0]} -dbDir ${SOURCES[1]} -comp temp/ -res ${TARGETS[0]} -exp ${ID}"),
+    BUILDERS = {
+        "ECFFile" : Builder(action=ecf_file),
+        "WordPronounceSymTable" : Builder(action=word_pronounce_sym_table), 
+        "CleanPronounceSymTable" : Builder(action=clean_pronounce_sym_table), 
+        "MungeDatabase" : Builder(action=munge_dbfile), 
+        "CreateDataList" : Builder(action=create_data_list),
+        "GetFileList" : Builder(action=get_file_list), 
+        "QueryFiles" : Builder(action=query_files),
+        "BuildPadFST" : Builder(action="${BUILDPADFST} ${SOURCE} ${TARGET}"),
+        "FSTCompile" : Builder(action="${FSTCOMPILE} --isymbols=${SOURCES[0]} --osymbols=${SOURCES[0]} ${SOURCES[1]} > ${TARGETS[0]}"), 
+        "QueryToPhoneFST" : Builder(action="${QUERY2PHONEFST} -p ${SOURCES[0]} -s ${SOURCES[1]} -d ${SOURCES[2]} -l ${TARGETS[0]} -n ${n} -I ${I} ${OUTDIR} ${SOURCES[3]} 2> /dev/null"),
+        "MergeIVOOVCascade" : Builder(action="perl ${MERGEIVOOVCASCADE} ${SOURCES[0]} ${SOURCES[1]} ${TARGETS[0]}"),
+        "LatticeToIndex" : Builder(action="${LAT2IDX} -D ${SOURCES[0]} -s ${SOURCES[1]} -d ${SOURCES[2]} -S ${EPSILON_SYMBOLS} -I ${TARGETS[0]} -i ${TARGETS[1]} -o ${TARGETS[2]} 2> /dev/null"),
+        "StandardSearch" : Builder(action="${STDSEARCH} -F ${TARGETS[0]} -a IARPA-babel206b-v0.1e_conv-dev.kwlist.xml -d ${SOURCES[1]} -i ${SOURCES[2]} -s ${SOURCES[3]} -b KW${BABEL_ID}-0 -o ${SOURCES[4]} ${SOURCES[5]} 2> /dev/null"),
+        "MergeSearchFromParIndex" : Builder(action="${MERGESEARCHFROMPARINDEXPRL} ${SOURCE} > ${TARGET}"),
+        "SumToOneNormalize" : Builder(action="${SUMTOONENORMALIZE} < ${SOURCE} > ${TARGET}"),
+        "ApplyRescaledDTPipe" : Builder(action="python ${APPLYRESCALEDDTPIPE} ${SOURCES[0]} ${SOURCES[1]} ${SOURCES[2]} < ${SOURCES[3]} > ${TARGETS[0]} 2> /dev/null"),
+        "BabelScorer" : Builder(action="perl -X ${BABELSCORER} -e ${SOURCES[0]} -r ${SOURCES[1]} -t ${SOURCES[2]} -s ${SOURCES[3]} -c -o -b -d -a --ExcludePNGFileFromTxtTable -f ${'.'.join(TARGETS[0].rstr().split('.')[0:-2])} -y TXT"),
     }
     
     env.AddMethod(run_kws, "RunKWS")

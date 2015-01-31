@@ -1,34 +1,26 @@
-# LOCAL_PATH = "/home/tom/local"
-# NUM_ITERATIONS = 10
-# NUM_SAMPLES = 1
-# INDUSDB_PATH = "/home/tom/IndusDB.20140807"
-# NUM_TAGS = 17
-# LANGUAGE_PACK_PATH = "/vega/ccls/projects/babel/stripped_language_packs"
-# PYCFG_PATH = "/home/tom/py-cfg"
-# HAS_TORQUE = True
-# ANNEAL_INITIAL = 3
-# ANNEAL_FINAL = 1
-# ANNEAL_ITERATIONS = NUM_ITERATIONS / 4
-# MAXIMUM_SENTENCE_LENGTH = 20
-# BABEL_DATA_PATH = "/home/tom/projects/babel_data"
+# BASE_PATH = "/home/tom/projects/babel_data"
+# ASR_JOB_COUNT = 200
+# KWS_JOB_COUNT = 200
+# THREADED_SUBMIT_NODE = True
 
 # LANGUAGES = {
 #     #"german" : {},
 #     #"hebrew" : {},
-#     "english" : {
-#         "HAS_PREFIXES" : False,
-#         "HAS_SUFFIXES" : True,
+#     #"english" : {
+#     #    "HAS_PREFIXES" : False,
+#     #    "HAS_SUFFIXES" : True,
+#     #    "IS_AGGLUTINATIVE" : False,
 #         #"BABEL_ID" : 001,
-#     },
+#         #},
 #     #"arabic" : {
 #         #"BABEL_ID" : 002,
 #     #},
-#     "mandarin" : {
+#     #"mandarin" : {
 #         #"BABEL_ID" : 003,
-#     },
-#     "cantonese" : {
-#         "BABEL_ID" : 101,
-#     },
+#         #},
+#     #"cantonese" : {
+#     #    "BABEL_ID" : 101,
+#     #},
 #     "assamese" : {
 #         "BABEL_ID" : 102,
 #     },
@@ -41,14 +33,15 @@
 #     "turkish" : {
 #         "HAS_PREFIXES" : False,
 #         "HAS_SUFFIXES" : True,
+#         "IS_AGGLUTINATIVE" : True,
 #         "BABEL_ID" : 105,
 #     },
 #     "tagalog" : {
 #         "BABEL_ID" : 106,
 #     },
-#     "vietnamese" : {
-#         "BABEL_ID" : 107,
-#     },
+#     #"vietnamese" : {
+#     #    "BABEL_ID" : 107,
+#     #},
 #     "haitian_creole" : {
 #         "BABEL_ID" : 201,
 #     },
@@ -65,6 +58,10 @@
 #         "HAS_PREFIXES" : True,
 #         "HAS_SUFFIXES" : True,
 #         "BABEL_ID" : 206,
+#         "IS_AGGLUTINATIVE" : True,
+#         "SKIP_ROMAN" : False,
+#         "ACOUSTIC_WEIGHT" : .053,
+#         "PHONEME_SWAP" : {"3" : "E"},
 #     },
 #     "tok_pisin" : {
 #         "BABEL_ID" : 207,
@@ -77,6 +74,7 @@
 #     "kazakh" : {
 #         "BABEL_ID" : 302,
 #         "VLLP" : True,
+#         "IS_AGGLUTINATIVE" : True,
 #     },
 #     "telugu" : {
 #         "BABEL_ID" : 303,
