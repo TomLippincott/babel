@@ -22,8 +22,8 @@ from babel import ProbabilityList, Arpabo, Pronunciations, Vocabulary
 
 class CFG():
     dbFile = '${DATABASE_FILE}'
-    dictFile = '${PRONUNCIATIONS_FILE}'
-    vocab = '${VOCABULARY_FILE}'
+    #dictFile = '${PRONUNCIATIONS_FILE}'
+    #vocab = '${VOCABULARY_FILE}'
     ctmDir = '${CTM_PATH}'
     latDir = '${LATTICE_PATH}'
     ecf_file = '${ECF_FILE}'
@@ -138,6 +138,13 @@ def munge_dbfile(target, source, env):
     ofd.close()
     return None
 
+def keyword_xml_to_text(target, source, env):
+    with meta_open(source[0].rstr()) as ifd:
+        keywords = [k.text for k in et.parse(ifd).getiterator("kwtext")]
+    with meta_open(target[0].rstr(), "w") as ofd:
+        ofd.write(("\n".join(keywords)).encode("utf-8"))
+    return None
+
 def create_data_list(target, source, env):
     """
     NEEDS WORK!
@@ -174,9 +181,11 @@ def get_file_list(target, source, env):
         ofd.write("\n".join([os.path.abspath(x.rstr()) for x in source]) + "\n")
     return None
 
-def run_kws(env, experiment_path, asr_output, *args, **kw):
+def run_kws(env, experiment_path, asr_output, vocabulary, pronunciations, *args, **kw):
     cfg = CFG(env)
     env.Replace(EPSILON_SYMBOLS="'<s>,</s>,~SIL,<HES>'")
+    #cfg.dictFile -> pronunciations,
+    #cfg.vocab -> vocabulary
 
     devinfo = env.File("${MODEL_PATH}/devinfo")
     
@@ -185,10 +194,10 @@ def run_kws(env, experiment_path, asr_output, *args, **kw):
                                                                                                                                "term_map.txt",
                                                                                                                                "word_to_word.fst",
                                                                                                                                "kwfile.xml"]], 
-                                                                                          [cfg.keyword_file, cfg.dictFile, env.Value(str(env["BABEL_ID"])), env.Value("")])
+                                                                                          [cfg.keyword_file, pronunciations, env.Value(str(env["BABEL_ID"])), env.Value("")])
 
     wordpron = env.WordPronounceSymTable(pjoin(experiment_path, "in_vocabulary_symbol_table.txt"),
-                                         cfg.dictFile)
+                                         pronunciations)
 
     vocabulary_symbols = env.CleanPronounceSymTable(pjoin(experiment_path, "cleaned_in_vocabulary_symbol_table.txt"),
                                                     wordpron)
@@ -200,11 +209,11 @@ def run_kws(env, experiment_path, asr_output, *args, **kw):
                              [vocabulary_symbols, word_to_word_fst])
 
     iv_queries = env.QueryToPhoneFST(pjoin(experiment_path, "iv_queries", "iv_query.fst"), 
-                                     [p2p_fst, vocabulary_symbols, cfg.vocab, iv_query_terms, env.Value({"n" : 1, "I" : 1, "OUTDIR" : pjoin(experiment_path, "iv_queries")})])
+                                     [p2p_fst, vocabulary_symbols, vocabulary, iv_query_terms, env.Value({"n" : 1, "I" : 1, "OUTDIR" : pjoin(experiment_path, "iv_queries")})])
 
     env.Replace(n=1, I=1, OUTDIR=pjoin(experiment_path, "oov_queries"))
     oov_queries = env.QueryToPhoneFST(pjoin(experiment_path, "oov_queries", "oov_query.fst"), 
-                                      [p2p_fst, vocabulary_symbols, cfg.vocab, oov_query_terms, env.Value({"n" : 1, "I" : 1, "OUTDIR" : pjoin(experiment_path, "oov_queries")})])
+                                      [p2p_fst, vocabulary_symbols, vocabulary, oov_query_terms, env.Value({"n" : 1, "I" : 1, "OUTDIR" : pjoin(experiment_path, "oov_queries")})])
 
     all_lattices = env.Textfile(os.path.join(experiment_path, "all_lattices.txt"), [x[1] for x in asr_output])
     full_mdb = env.MungeDatabase(pjoin(experiment_path, "full_munged_database.txt"),
@@ -232,7 +241,7 @@ def run_kws(env, experiment_path, asr_output, *args, **kw):
         idx, isym, osym = env.LatticeToIndex([pjoin(experiment_path, "lattices", "index-%d" % (i)),
                                               pjoin(experiment_path, "lattices", "isym-%d" % (i)),
                                               pjoin(experiment_path, "lattices", "osym-%d" % (i))],
-                                             [data_list, wordpron, cfg.dictFile])
+                                             [data_list, wordpron, pronunciations])
 
         iv_searches.append(env.StandardSearch(pjoin(experiment_path, "iv_search_output-%d.txt" % (i)),
                                               [xml_template, data_list, idx, isym, osym, iv_queries]))
@@ -275,6 +284,7 @@ def TOOLS_ADD(env):
         "SumToOneNormalize" : Builder(action="${SUMTOONENORMALIZE} < ${SOURCE} > ${TARGET}"),
         "ApplyRescaledDTPipe" : Builder(action="python ${APPLYRESCALEDDTPIPE} ${SOURCES[0]} ${SOURCES[1]} ${SOURCES[2]} < ${SOURCES[3]} > ${TARGETS[0]} 2> /dev/null"),
         "BabelScorer" : Builder(action="perl -X ${BABELSCORER} -e ${SOURCES[0]} -r ${SOURCES[1]} -t ${SOURCES[2]} -s ${SOURCES[3]} -c -o -b -d -a --ExcludePNGFileFromTxtTable -f ${'.'.join(TARGETS[0].rstr().split('.')[0:-2])} -y TXT"),
+        "KeywordXMLToText" : Builder(action=keyword_xml_to_text),
     }
     
     env.AddMethod(run_kws, "RunKWS")

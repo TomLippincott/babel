@@ -170,10 +170,9 @@ def stm_to_data(target, source, env):
                 text = tf.extractfile(names[0]).read()            
     else:
         return "Must provide an archive and file name pattern"
-    sentences = [x.split()[3:] for x in text.split("\n")]
-    data = DataSet.from_sentences([[(w, None, []) for w in s] for s in sentences])
+    sentences = [[w for w in x.split()[3:] if not (w.startswith("(") or w.startswith("<"))] for x in text.split("\n")]
     with meta_open(target[0].rstr(), "w") as ofd:
-        data.write(ofd)
+        ofd.write("\n".join([" ".join(s) for s in sentences if len(s) > 0]) + "\n")
     return None
 
 def generate_data_subset(target, source, env):
