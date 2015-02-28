@@ -44,7 +44,7 @@ vars.AddVariables(
     ("ANNEAL_FINAL", "", 1),
     ("ANNEAL_ITERATIONS", "", 500),
     
-    # these variables determine how parallelism is exploited
+    # these variables determine how parallelism is exploited    
     BoolVariable("TORQUE_SUBMIT_NODE", "", False),
     BoolVariable("TORQUE_WORKER_NODE", "", False),
     ("TORQUE_TIME", "", "11:30:00"),
@@ -55,7 +55,8 @@ vars.AddVariables(
     ("ASR_JOB_COUNT", "", 1),
     ("KWS_JOB_COUNT", "", 1),
     ("JOB_ID", "", 0),
-
+    ("SCONSIGN_FILE", "", None),
+    
     # these variables define the locations of various tools and data
     ("BASE_PATH", "", None),
     ("LOCAL_PATH", "", "${BASE_PATH}/local"),
@@ -156,9 +157,9 @@ env = Environment(variables=vars, ENV=os.environ, TARFLAGS="-c -z", TARSUFFIX=".
 long_running = [
     ("ASRTest", 2, 5),
     #("LatticeToIndex", 3, 3),
-    ("RunPYCFG", 2, 3),
-    ("TrainMorfessor", 2, 1),
-    ("TrainLanguageModel", 1, 2),
+    #("RunPYCFG", 2, 3),
+    #("TrainMorfessor", 2, 1),
+    #("TrainLanguageModel", 1, 2),
 ]
 
 for b, t, s in long_running:
@@ -166,15 +167,12 @@ for b, t, s in long_running:
         env["BUILDERS"][b] = make_threaded_builder(env["BUILDERS"][b], t, s)
     elif env["TORQUE_SUBMIT_NODE"]:
         env["BUILDERS"][b] = make_torque_builder(env["BUILDERS"][b], t, s)
-    elif env["TORQUE_WORKER_NODE"] or env["THREADED_WORKER_NODE"]:
-        env.SConsignFile(".sconsign2")
+if (env["TORQUE_WORKER_NODE"] or env["THREADED_WORKER_NODE"]) and env["SCONSIGN_FILE"]:
+    env.SConsignFile(env["SCONSIGN_FILE"])
 
 Help(vars.GenerateHelpText(env))
 
-
 # env.Tag(node, X=y)
-#"ASRTest" : Builder(action=Action(torque_run, batch_key=True)),
-
 
 # don't print out lines longer than the terminal width
 def print_cmd_line(s, target, source, env):
@@ -253,6 +251,8 @@ for language, properties in env["LANGUAGES"].iteritems():
             baseline_language_model = env.Glob("${IBM_MODELS}/${BABEL_ID}/${PACK}/models/*.arpabo.gz")[0]
             env.Replace(ACOUSTIC_WEIGHT=properties.get("ACOUSTIC_WEIGHT", .09))
             baseline_asr_output = env.RunASR("work/asr_experiments/${LANGUAGE_NAME}/${PACK}/baseline", baseline_vocabulary, baseline_pronunciations, baseline_language_model)
+            
+            continue
             #baseline_kws_output = env.RunKWS("work/kws_experiments/${LANGUAGE_NAME}/${PACK}/baseline", baseline_asr_output[1:], baseline_vocabulary, baseline_pronunciations)
             #continue
             segmented_pronunciations_training, morphs = env.SegmentedPronunciations(["work/pronunciations/${LANGUAGE_NAME}_${PACK}_morfessor_segmented.txt",
