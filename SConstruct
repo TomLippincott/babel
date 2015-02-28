@@ -254,7 +254,7 @@ for language, properties in env["LANGUAGES"].iteritems():
             env.Replace(ACOUSTIC_WEIGHT=properties.get("ACOUSTIC_WEIGHT", .09))
             baseline_asr_output = env.RunASR("work/asr_experiments/${LANGUAGE_NAME}/${PACK}/baseline", baseline_vocabulary, baseline_pronunciations, baseline_language_model)
             #baseline_kws_output = env.RunKWS("work/kws_experiments/${LANGUAGE_NAME}/${PACK}/baseline", baseline_asr_output[1:], baseline_vocabulary, baseline_pronunciations)
-
+            #continue
             segmented_pronunciations_training, morphs = env.SegmentedPronunciations(["work/pronunciations/${LANGUAGE_NAME}_${PACK}_morfessor_segmented.txt",
                                                                                      "work/pronunciations/${LANGUAGE_NAME}_${PACK}_morfessor_morphs.txt"],
                                                                                     [baseline_pronunciations, segs])
@@ -262,11 +262,11 @@ for language, properties in env["LANGUAGES"].iteritems():
             morph_pronunciations = env.ApplyG2P("work/pronunciations/${LANGUAGE_NAME}_${PACK}_morfessor_morph_pronunciations.txt", [g2p_segmented_model, morphs])
             segmented_vocabulary, segmented_pronunciations = env.PronunciationsToVocabDict(
                 ["work/asr_input/${LANGUAGE_NAME}_${PACK}_morfessor_vocabulary.txt", "work/asr_input/${LANGUAGE_NAME}_${PACK}_morfessor_pronunciations.txt"],
-                [morph_pronunciations, baseline_pronunciations])
+                [morph_pronunciations, baseline_pronunciations, env.Value(properties.get("GRAPHEMIC", False))])
             segmented_training_text = env.SegmentTranscripts("work/segmented_training/${LANGUAGE_NAME}_${PACK}.txt", [data, segs])
             segmented_language_model = env.TrainLanguageModel("work/asr_input/${LANGUAGE_NAME}_${PACK}_languagemodel_segmented.arpabo.gz",
                                                               [segmented_training_text, Value(2)])
-            #morfessor_asr_output = env.RunASR("work/asr_experiments/${LANGUAGE_NAME}/${PACK}/morfessor", segmented_vocabulary, segmented_pronunciations, segmented_language_model)
+            morfessor_asr_output = env.RunASR("work/asr_experiments/${LANGUAGE_NAME}/${PACK}/morfessor", segmented_vocabulary, segmented_pronunciations, segmented_language_model)
             #morfessor_kws_output = env.RunKWS("work/kws_experiments/${LANGUAGE_NAME}/morfessor", morfessor_asr_output, segmented_vocabulary, segmented_pronunciations)
             # training_vocabulary_file = env.TextToVocabulary("work/vocabularies/${LANGUAGE_NAME}/training.txt.gz",
     #                                                 training_text)
