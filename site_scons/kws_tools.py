@@ -19,57 +19,33 @@ import tempfile
 from common_tools import meta_open, temp_dir
 from babel import ProbabilityList, Arpabo, Pronunciations, Vocabulary
 
-
-class CFG():
-    dbFile = '${DATABASE_FILE}'
-    #dictFile = '${PRONUNCIATIONS_FILE}'
-    #vocab = '${VOCABULARY_FILE}'
-    ctmDir = '${CTM_PATH}'
-    latDir = '${LATTICE_PATH}'
-    ecf_file = '${ECF_FILE}'
-    keyword_file = '${KEYWORD_FILE}'    
-    rttm_file = '${RTTM_FILE}'
-    def __str__(self):
-        return "\n".join(["%s = %s" % (k, getattr(self, k)) for k in dir(self) if not k.startswith("_")])
-    def __init__(self, env, **args):
-        for k in [x for x in dir(self) if not x.startswith("_")]:
-            current = getattr(self, k)
-            if isinstance(current, basestring) and "FILE" in current:
-                try:
-                    setattr(self, k, os.path.abspath(env.Glob(env.subst(current))[0].rstr()))
-                except:
-                    setattr(self, k, os.path.abspath(env.subst(current)))
-            else:
-                setattr(self, k, env.subst(current))
-
-
 def query_files(target, source, env):
     # OUTPUT:
     # iv oov map w2w <- 
     # INPUT: kw, iv, id
     # pad id to 4
-    remove_vocab = source[-1].read()
-    with meta_open(source[0].rstr()) as kw_fd, meta_open(source[1].rstr()) as iv_fd:
+    #remove_vocab = source[-1].read()
+    with meta_open(source[0].rstr(), enc=None) as kw_fd, meta_open(source[1].rstr()) as iv_fd:
         keyword_xml = et.parse(kw_fd)
-        keywords = set([(x.get("kwid"), x.find("kwtext").text.lower()) for x in keyword_xml.getiterator("kw")])
-        vocab = [x.decode("utf-8") for x in Pronunciations(iv_fd).get_words()]
-        if remove_vocab:
-            remove_vocab = Vocabulary(meta_open(remove_vocab)).get_words()
-        else:
-            remove_vocab = []
-        iv_keywords = sorted([(int(tag.split("-")[-1]), tag, term) for tag, term in keywords if all([y in vocab for y in term.split()]) and term not in remove_vocab])
+        keywords = list(set([(x.get("kwid"), x.find("kwtext").text.lower()) for x in keyword_xml.getiterator("kw")]))
+        vocab = [x for x in Pronunciations(iv_fd).get_words()]
+        #if remove_vocab:
+        #    remove_vocab = Vocabulary(meta_open(remove_vocab)).get_words()
+        #else:
+        #    remove_vocab = []
+        iv_keywords = sorted([(int(tag.split("-")[-1]), tag, term) for tag, term in keywords if all([y in vocab for y in term.split()])]) # and term not in remove_vocab])
         oov_keywords = sorted([(int(tag.split("-")[-1]), tag, term) for tag, term in keywords if any([y not in vocab for y in term.split()])])
         language_id = source[-2].read()
-        with meta_open(target[0].rstr(), "w") as iv_ofd, meta_open(target[1].rstr(), "w") as oov_ofd, meta_open(target[2].rstr(), "w") as map_ofd, meta_open(target[3].rstr(), "w") as w2w_ofd, meta_open(target[4].rstr(), "w") as kw_ofd:
-            iv_ofd.write("\n".join([x[2].encode("utf-8") for x in iv_keywords]))
-            oov_ofd.write("\n".join([x[2].encode("utf-8") for x in oov_keywords]))
-            map_ofd.write("\n".join(["%s %.5d %.5d" % x for x in 
-                                     sorted([("iv", gi, li) for li, (gi, tag, term) in enumerate(iv_keywords, 1)] + 
-                                            [("oov", gi, li) for li, (gi, tag, term) in enumerate(oov_keywords, 1)], lambda x, y : cmp(x[1], y[1]))]))
-            w2w_ofd.write("\n".join([("0 0 %s %s 0" % (x.encode("utf-8"), x.encode("utf-8"))) for x in vocab if x != "VOCAB_NIL_WORD"] + ["0"]))
-            for x in keyword_xml.getiterator("kw"):
-                x.set("kwid", "KW%s-%s" % (language_id, x.get("kwid").split("-")[-1]))
-            keyword_xml.write(kw_ofd) #.write(et.tostring(keyword_xml.))
+    with meta_open(target[0].rstr(), "w") as iv_ofd, meta_open(target[1].rstr(), "w") as oov_ofd, meta_open(target[2].rstr(), "w") as map_ofd, meta_open(target[3].rstr(), "w") as w2w_ofd, meta_open(target[4].rstr(), "w") as kw_ofd:
+        iv_ofd.write("\n".join([x[2] for x in iv_keywords]))
+        oov_ofd.write("\n".join([x[2] for x in oov_keywords]))
+        map_ofd.write("\n".join(["%s %.5d %.5d" % x for x in 
+                                 sorted([("iv", gi, li) for li, (gi, tag, term) in enumerate(iv_keywords, 1)] + 
+                                        [("oov", gi, li) for li, (gi, tag, term) in enumerate(oov_keywords, 1)], lambda x, y : cmp(x[1], y[1]))]))
+        w2w_ofd.write("\n".join([("0 0 %s %s 0" % (x, x)) for x in vocab if x != "VOCAB_NIL_WORD"] + ["0"]))
+        for x in keyword_xml.getiterator("kw"):
+            x.set("kwid", "KW%s-%s" % (language_id, x.get("kwid").split("-")[-1]))
+        keyword_xml.write(kw_ofd) #.write(et.tostring(keyword_xml.))
     return None
 
 def ecf_file(target, source, env):
@@ -139,10 +115,12 @@ def munge_dbfile(target, source, env):
     return None
 
 def keyword_xml_to_text(target, source, env):
-    with meta_open(source[0].rstr()) as ifd:
-        keywords = [k.text for k in et.parse(ifd).getiterator("kwtext")]
+    with meta_open(source[0].rstr(), enc=None) as ifd:
+        keywords = set(sum([k.text.split() for k in et.parse(ifd).getiterator("kwtext")], []))
     with meta_open(target[0].rstr(), "w") as ofd:
-        ofd.write(("\n".join(keywords)).encode("utf-8"))
+        #x = list(keywords)[0]
+        #print dir(x)
+        ofd.write(("\n".join([" ".join(["^^^"] + [c for c in x] + ["$$$"]) for x in keywords])))
     return None
 
 def create_data_list(target, source, env):
@@ -181,12 +159,29 @@ def get_file_list(target, source, env):
         ofd.write("\n".join([os.path.abspath(x.rstr()) for x in source]) + "\n")
     return None
 
-def run_kws(env, experiment_path, asr_output, vocabulary, pronunciations, *args, **kw):
-    cfg = CFG(env)
-    env.Replace(EPSILON_SYMBOLS="'<s>,</s>,~SIL,<HES>'")
-    #cfg.dictFile -> pronunciations,
-    #cfg.vocab -> vocabulary
+def fix_ids(target, source, env):
+    term_map = {}
+    with meta_open(source[1].rstr()) as ifd:
+        for line in ifd:
+            n, t, f = line.strip().split()
+            if n == source[2].read():
+                term_map[f] = t
+    with meta_open(source[0].rstr(), enc=None) as ifd:
+        xml = et.parse(ifd)
+        for k in xml.getiterator("detected_kwlist"):
+            a, b = k.get("kwid").split("-")
+            k.set("kwid", "-".join([a, term_map[b]]))
+    with meta_open(target[0].rstr(), "w", enc=None) as ofd:
+        xml.write(ofd)        
+    return None
 
+def run_kws(env, experiment_path, asr_output, vocabulary, pronunciations, *args, **kw):
+    env.Replace(EPSILON_SYMBOLS="'<s>,</s>,~SIL,<HES>'")
+    
+    keyword_file = env.Glob("${KEYWORD_FILE}")[0]
+    database_file = env.Glob('${DATABASE_FILE}')[0]
+    ecf_file = env.Glob("${ECF_FILE}")[0]
+    rttm_file = env.Glob("${RTTM_FILE}")[0]
     devinfo = env.File("${MODEL_PATH}/devinfo")
     
     iv_query_terms, oov_query_terms, term_map, word_to_word_fst, kw_file = env.QueryFiles([pjoin(experiment_path, x) for x in ["iv_queries.txt", 
@@ -194,7 +189,7 @@ def run_kws(env, experiment_path, asr_output, vocabulary, pronunciations, *args,
                                                                                                                                "term_map.txt",
                                                                                                                                "word_to_word.fst",
                                                                                                                                "kwfile.xml"]], 
-                                                                                          [cfg.keyword_file, pronunciations, env.Value(str(env["BABEL_ID"])), env.Value("")])
+                                                                                          [keyword_file, pronunciations, env.Value(str(env["BABEL_ID"])), env.Value("")])
 
     wordpron = env.WordPronounceSymTable(pjoin(experiment_path, "in_vocabulary_symbol_table.txt"),
                                          pronunciations)
@@ -217,18 +212,20 @@ def run_kws(env, experiment_path, asr_output, vocabulary, pronunciations, *args,
 
     all_lattices = env.Textfile(os.path.join(experiment_path, "all_lattices.txt"), [x[1] for x in asr_output])
     full_mdb = env.MungeDatabase(pjoin(experiment_path, "full_munged_database.txt"),
-                            [cfg.dbFile, all_lattices])
+                            [database_file, all_lattices])
     full_ecf_file = env.ECFFile(pjoin(experiment_path, "full_ecf.xml"), full_mdb)    
 
-    xml_template = env.File("${LORELEI_SVN}/${BABEL_ID}/LimitedLP/kws-resources/kws-resources-IndusDB.20140206.NWAY.dev/template.word.xml")
+    #xml_template = env.File("${LORELEI_SVN}/${BABEL_ID}/LimitedLP/kws-resources/kws-resources-IndusDB.20140206.NWAY.dev/template.word.xml")
+    xml_template = env.File("data/template.word.xml")
     
     iv_searches = []
     oov_searches = []
     asr_lattice_path = env.Dir(os.path.join(os.path.split(os.path.dirname(asr_output[0][0].rstr()))[0], "lat")).rstr()
-    for ctm, lattice_list in asr_output:
+
+    for ctm, lattice_list in asr_output[0:1]:
         i = int(re.match(r".*?(\d+).ctm$", ctm.rstr()).group(1))
         mdb = env.MungeDatabase(pjoin(experiment_path, "munged_database-%d.txt" % (i)),
-                                [cfg.dbFile, lattice_list])
+                                [database_file, lattice_list])
         
         data_list = env.CreateDataList(pjoin(experiment_path, "data_list-%d.txt" % (i)),
                                        [mdb] + [env.Value({"oldext" : "fsm.gz", 
@@ -247,26 +244,29 @@ def run_kws(env, experiment_path, asr_output, vocabulary, pronunciations, *args,
                                               [xml_template, data_list, idx, isym, osym, iv_queries]))
         oov_searches.append(env.StandardSearch(pjoin(experiment_path, "oov_search_output-%d.txt" % (i)),
                                                [xml_template, data_list, idx, isym, osym, oov_queries]))
-
+    
     iv_search_outputs = env.GetFileList(pjoin(experiment_path, "iv_search_outputs.txt"), iv_searches)
     iv_merged = env.MergeSearchFromParIndex(pjoin(experiment_path, "iv_merged.txt"), iv_search_outputs)
     iv_sto_norm = env.SumToOneNormalize(pjoin(experiment_path, "iv_sto_norm.txt"), iv_merged)
-
+    iv_sto_norm_fixed = env.FixIDs(pjoin(experiment_path, "iv_sto_norm_fixed.xml"), [iv_sto_norm, term_map, env.Value("iv")])
+    
     oov_search_outputs = env.GetFileList(pjoin(experiment_path, "oov_search_outputs.txt"), oov_searches)
     oov_merged = env.MergeSearchFromParIndex(pjoin(experiment_path, "oov_merged.txt"), oov_search_outputs)
     oov_sto_norm = env.SumToOneNormalize(pjoin(experiment_path, "oov_sto_norm.txt"), oov_merged)
+    oov_sto_norm_fixed = env.FixIDs(pjoin(experiment_path, "oov_sto_norm_fixed.xml"), [oov_sto_norm, term_map, env.Value("oov")])
 
-    merged = env.MergeIVOOVCascade(pjoin(experiment_path, "merged.txt"), [iv_sto_norm, oov_sto_norm])
+    merged = env.MergeIVOOVCascade(pjoin(experiment_path, "merged.txt"), [iv_sto_norm_fixed, oov_sto_norm_fixed])
     # iterate here
     # merged = env.MergeIVOOVCascade(pjoin(experiment_path, "merged.txt"), [merged, excluded_xml])
 
-    dt = env.ApplyRescaledDTPipe(pjoin(experiment_path, "dt.kwslist.xml"), [devinfo, cfg.dbFile, full_ecf_file, merged])
+    dt = env.ApplyRescaledDTPipe(pjoin(experiment_path, "dt.kwslist.xml"), [devinfo, database_file, full_ecf_file, merged])
     kws_score = env.BabelScorer([pjoin(experiment_path, "score.%s" % x) for x in ["alignment.csv", "bsum.txt", "sum.txt"]],
-                                [cfg.ecf_file, cfg.rttm_file, cfg.keyword_file, dt])
+                                [ecf_file, rttm_file, keyword_file, dt])
     return None
 
 def TOOLS_ADD(env):
     BUILDERS = {
+        "FixIDs" : Builder(action=fix_ids),
         "ECFFile" : Builder(action=ecf_file),
         "WordPronounceSymTable" : Builder(action=word_pronounce_sym_table), 
         "CleanPronounceSymTable" : Builder(action=clean_pronounce_sym_table), 
@@ -279,7 +279,7 @@ def TOOLS_ADD(env):
         "QueryToPhoneFST" : Builder(action="${QUERY2PHONEFST} -p ${SOURCES[0]} -s ${SOURCES[1]} -d ${SOURCES[2]} -l ${TARGETS[0]} -n ${n} -I ${I} ${OUTDIR} ${SOURCES[3]} 2> /dev/null"),
         "MergeIVOOVCascade" : Builder(action="perl ${MERGEIVOOVCASCADE} ${SOURCES[0]} ${SOURCES[1]} ${TARGETS[0]}"),
         "LatticeToIndex" : Builder(action="${LAT2IDX} -D ${SOURCES[0]} -s ${SOURCES[1]} -d ${SOURCES[2]} -S ${EPSILON_SYMBOLS} -I ${TARGETS[0]} -i ${TARGETS[1]} -o ${TARGETS[2]} 2> /dev/null"),
-        "StandardSearch" : Builder(action="${STDSEARCH} -F ${TARGETS[0]} -a IARPA-babel206b-v0.1e_conv-dev.kwlist.xml -d ${SOURCES[1]} -i ${SOURCES[2]} -s ${SOURCES[3]} -b KW${BABEL_ID}-0 -o ${SOURCES[4]} ${SOURCES[5]} 2> /dev/null"),
+        "StandardSearch" : Builder(action="${STDSEARCH} -F ${TARGETS[0]} -a IARPA-babel${BABEL_ID}_conv-dev.kwlist.xml -d ${SOURCES[1]} -i ${SOURCES[2]} -s ${SOURCES[3]} -b KW${BABEL_ID}-0 -o ${SOURCES[4]} ${SOURCES[5]} 2> /dev/null"),
         "MergeSearchFromParIndex" : Builder(action="${MERGESEARCHFROMPARINDEXPRL} ${SOURCE} > ${TARGET}"),
         "SumToOneNormalize" : Builder(action="${SUMTOONENORMALIZE} < ${SOURCE} > ${TARGET}"),
         "ApplyRescaledDTPipe" : Builder(action="python ${APPLYRESCALEDDTPIPE} ${SOURCES[0]} ${SOURCES[1]} ${SOURCES[2]} < ${SOURCES[3]} > ${TARGETS[0]} 2> /dev/null"),

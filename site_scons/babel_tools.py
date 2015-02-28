@@ -790,17 +790,25 @@ def run_new_kws(env, name, asr_output, *args, **kw):
     pass
 
 def segment_transcripts(target, source, env):
-    with meta_open(source[0].rstr()) as text_fd, meta_open(source[1].rstr()) as morph_fd:
-        morph = {}
-        for a in DataSet.from_stream(morph_fd)[0].indexToAnalysis.values():
-            w = "".join(a)
-            if len(a) == 1:
-                ms = a
-            else:
-                ms = ["%s+" % (a[0])] + ["+%s+" % (x) for x in a[1:-1]] + ["+%s" % (a[-1])]
-            morph[w] = morph.get(w, []) + [ms]
-        sentences = [[" ".join(morph.get(w, [[w]])[0]) for w in l.split()] for l in text_fd]        
-    with meta_open(target[0].rstr(), "w") as ofd:
+    mapping = {}
+    with meta_open(source[1].rstr()) as morph_fd:
+        for l in morph_fd:
+            toks = l.strip().split()
+            mapping["".join([x.strip("+") for x in toks])] = toks
+    sentences = []
+    with meta_open(source[0].rstr()) as text_fd:
+        for l in text_fd:
+            sentences.append(sum([mapping.get(w, [w]) for w in l.split()], []))
+        # morph = {}
+        # for a in DataSet.from_stream(morph_fd)[0].indexToAnalysis.values():
+        #     w = "".join(a)
+        #     if len(a) == 1:
+        #         ms = a
+        #     else:
+        #         ms = ["%s+" % (a[0])] + ["+%s+" % (x) for x in a[1:-1]] + ["+%s" % (a[-1])]
+        #     morph[w] = morph.get(w, []) + [ms]
+        # sentences = [[" ".join(morph.get(w, [[w]])[0]) for w in l.split()] for l in text_fd]        
+    with meta_open(target[0].rstr(), "w", enc="utf-8") as ofd:
         ofd.write("\n".join([" ".join(s) for s in sentences]))
     return None
 

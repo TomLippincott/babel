@@ -1,8 +1,10 @@
-# BASE_PATH = "/home/tom/projects/babel_data"
-# ASR_JOB_COUNT = 200
-# KWS_JOB_COUNT = 200
-# THREADED_SUBMIT_NODE = True
-
+#BASE_PATH = "/home/tom/projects/babel_data"
+#ASR_JOB_COUNT = 200
+#KWS_JOB_COUNT = 40
+#THREADED_SUBMIT_NODE = True
+#TORQUE_SUBMIT_NODE = True
+#PYCFG_PATH = "/home/tom/py-cfg"
+#NUM_ITERATIONS = 1000
 # LANGUAGES = {
 #     #"german" : {},
 #     #"hebrew" : {},
@@ -23,27 +25,63 @@
 #     #},
 #     "assamese" : {
 #         "BABEL_ID" : 102,
+#         "PACKS" : ["FLP", "LLP"],
 #     },
 #     "bengali" : {
 #         "BABEL_ID" : 103,
+#         "PACKS" : ["FLP", "LLP"],
+#   # |  t    |  t_d  |
+#   # |  t_h  |  t_dh |
+#   # |  d    |  d_d  |
+#   # |  d_h  |  d_dh |
+#   # |  n    |  n_d  |
+#   # |  l    |  l_d  |
+#   # |  oi   |  oI   |
+#   # |  ou   |  oU   |
+#   # |  oi~  |  oI~  |
+#   # |  ou~  |  oU~  |
+
+
+
 #     },
 #     "pashto" : {
 #         "BABEL_ID" : 104,
+#         "PACKS" : ["FLP", "LLP"],
+#   # | i     | I     |
+#   # | i:    | I:    |
+#   # | u     | U     |
+#   # | u:    | U:    |
+#   # | r`    | l`_X  | 
+
+
+
 #     },
 #     "turkish" : {
 #         "HAS_PREFIXES" : False,
 #         "HAS_SUFFIXES" : True,
 #         "IS_AGGLUTINATIVE" : True,
 #         "BABEL_ID" : 105,
+#         "PACKS" : ["FLP", "LLP"],
+#   # | w     | v     |
+#   # | gj    | J\    |
+#   # | r     | 4     |
+#   # | r`    | 4_0   |
+#   # | 1     | M     |
+#   # | 1:    | M:    |
+
+
 #     },
 #     "tagalog" : {
 #         "BABEL_ID" : 106,
+#         "ACOUSTIC_WEIGHT" : .13,
+#         "PACKS" : ["FLP", "LLP"],
 #     },
 #     #"vietnamese" : {
 #     #    "BABEL_ID" : 107,
 #     #},
-#     "haitian_creole" : {
+#     "hatian_creole" : {
 #         "BABEL_ID" : 201,
+#         "PACKS" : ["FLP", "LLP"],
 #     },
 #     #"lao" : {
 #     #    "BABEL_ID" : 203,
@@ -53,6 +91,7 @@
 #     #},
 #     "kurmanji" : {
 #         "BABEL_ID" : 205,
+#         "PACKS" : ["FLP", "LLP"],
 #     },
 #     "zulu" : {
 #         "HAS_PREFIXES" : True,
@@ -60,28 +99,34 @@
 #         "BABEL_ID" : 206,
 #         "IS_AGGLUTINATIVE" : True,
 #         "SKIP_ROMAN" : False,
-#         "ACOUSTIC_WEIGHT" : .053,
+#         #"ACOUSTIC_WEIGHT" : .053,
 #         "PHONEME_SWAP" : {"3" : "E"},
+#         "PACKS" : ["FLP", "LLP"],
 #     },
 #     "tok_pisin" : {
 #         "BABEL_ID" : 207,
-#         "VLLP" : True,
+#         "PACKS" : ["FLP", "LLP"],
 #     },
 #     "cebuano" : {
 #         "BABEL_ID" : 301,
-#         "VLLP" : True,
+#         "PACKS" : ["FLP", "VLLP"],
+#         "GRAPHEMIC" : True,
 #     },
 #     "kazakh" : {
 #         "BABEL_ID" : 302,
-#         "VLLP" : True,
 #         "IS_AGGLUTINATIVE" : True,
+#         "PACKS" : ["FLP", "VLLP"],
+#         "GRAPHEMIC" : True,
+#         #"LOWER_CASE" : False,
 #     },
 #     "telugu" : {
 #         "BABEL_ID" : 303,
-#         "VLLP" : True,
+#         "PACKS" : ["FLP", "VLLP"],
+#         "GRAPHEMIC" : True,
 #     },
 #     "lithuanian" : {
 #         "BABEL_ID" : 304,
-#         "VLLP" : True,
+#         "PACKS" : ["FLP", "VLLP"],
+#         "GRAPHEMIC" : True,
 #     },
 # }
