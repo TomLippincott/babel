@@ -45,13 +45,13 @@ vars.AddVariables(
     ("ANNEAL_ITERATIONS", "", 500),
     
     # these variables determine how parallelism is exploited    
+    BoolVariable("WORKER_NODE", "", False),
     BoolVariable("TORQUE_SUBMIT_NODE", "", False),
-    BoolVariable("TORQUE_WORKER_NODE", "", False),
     ("TORQUE_TIME", "", "11:30:00"),
     ("TORQUE_MEMORY", "", "3500mb"),
     ("TORQUE_INTERVAL", "", 60),
+    ("TORQUE_LOG", "", "work/"),
     BoolVariable("THREADED_SUBMIT_NODE", "", False),
-    BoolVariable("THREADED_WORKER_NODE", "", False),    
     ("ASR_JOB_COUNT", "", 1),
     ("KWS_JOB_COUNT", "", 1),
     ("JOB_ID", "", 0),
@@ -163,11 +163,13 @@ long_running = [
 ]
 
 for b, t, s in long_running:
-    if env["THREADED_SUBMIT_NODE"]:
+    if env["WORKER_NODE"]:
+        pass
+    elif env["THREADED_SUBMIT_NODE"]:
         env["BUILDERS"][b] = make_threaded_builder(env["BUILDERS"][b], t, s)
     elif env["TORQUE_SUBMIT_NODE"]:
         env["BUILDERS"][b] = make_torque_builder(env["BUILDERS"][b], t, s)
-if (env["TORQUE_WORKER_NODE"] or env["THREADED_WORKER_NODE"]) and env["SCONSIGN_FILE"]:
+if (env["WORKER_NODE"] or env["WORKER_NODE"]) and env.get("SCONSIGN_FILE", False):
     env.SConsignFile(env["SCONSIGN_FILE"])
 
 Help(vars.GenerateHelpText(env))
@@ -243,8 +245,6 @@ for language, properties in env["LANGUAGES"].iteritems():
                 baseline_pronunciations = env.File("${PRONUNCIATIONS_FILE}")
             else:
                 baseline_pronunciations = env.File("${PRONUNCIATIONS_FILE}")
-
-                
             #baseline_vocabulary = env.File("${IBM_MODELS}/${BABEL_ID}/${PACK}/models/vocab")
             #baseline_pronunciations = env.File("${IBM_MODELS}/${BABEL_ID}/${PACK}/models/dict.test")
             #baseline_language_model = env.TrainLanguageModel("work/language_models/${LANGUAGE_NAME}_${PACK}_baseline.arpabo.gz", [data, env.Value(2)])
@@ -252,9 +252,8 @@ for language, properties in env["LANGUAGES"].iteritems():
             env.Replace(ACOUSTIC_WEIGHT=properties.get("ACOUSTIC_WEIGHT", .09))
             baseline_asr_output = env.RunASR("work/asr_experiments/${LANGUAGE_NAME}/${PACK}/baseline", baseline_vocabulary, baseline_pronunciations, baseline_language_model)
             
-            continue
-            #baseline_kws_output = env.RunKWS("work/kws_experiments/${LANGUAGE_NAME}/${PACK}/baseline", baseline_asr_output[1:], baseline_vocabulary, baseline_pronunciations)
-            #continue
+            baseline_kws_output = env.RunKWS("work/kws_experiments/${LANGUAGE_NAME}/${PACK}/baseline", baseline_asr_output[1:], baseline_vocabulary, baseline_pronunciations)
+
             segmented_pronunciations_training, morphs = env.SegmentedPronunciations(["work/pronunciations/${LANGUAGE_NAME}_${PACK}_morfessor_segmented.txt",
                                                                                      "work/pronunciations/${LANGUAGE_NAME}_${PACK}_morfessor_morphs.txt"],
                                                                                     [baseline_pronunciations, segs])
@@ -267,7 +266,7 @@ for language, properties in env["LANGUAGES"].iteritems():
             segmented_language_model = env.TrainLanguageModel("work/asr_input/${LANGUAGE_NAME}_${PACK}_languagemodel_segmented.arpabo.gz",
                                                               [segmented_training_text, Value(2)])
             morfessor_asr_output = env.RunASR("work/asr_experiments/${LANGUAGE_NAME}/${PACK}/morfessor", segmented_vocabulary, segmented_pronunciations, segmented_language_model)
-            #morfessor_kws_output = env.RunKWS("work/kws_experiments/${LANGUAGE_NAME}/morfessor", morfessor_asr_output, segmented_vocabulary, segmented_pronunciations)
+            #morfessor_kws_output = env.RunKWS("work/kws_experiments/${LANGUAGE_NAME}/${PACK}/morfessor", morfessor_asr_output[1:], segmented_vocabulary, segmented_pronunciations)
             # training_vocabulary_file = env.TextToVocabulary("work/vocabularies/${LANGUAGE_NAME}/training.txt.gz",
     #                                                 training_text)
 
@@ -314,7 +313,7 @@ for language, properties in env["LANGUAGES"].iteritems():
     #segmented_language_model = env.IBMTrainLanguageModel("work/asr_input/${LANGUAGE_NAME}/languagemodel_segmented.arpabo.gz", [segmented_training_text, Value(2)])
 
     morfessor_asr_output = env.RunASR("work/asr_experiments/${LANGUAGE_NAME}/morfessor", segmented_vocabulary, segmented_pronunciations, segmented_language_model)
-    #morfessor_kws_output = env.RunKWS("work/kws_experiments/${LANGUAGE_NAME}/morfessor", morfessor_asr_output, segmented_vocabulary, segmented_pronunciations)
+    #morfessor_kws_output = env.RunCascadeKWS("work/kws_experiments/${LANGUAGE_NAME}/morfessor", [baseline_asr_output, morfessor_asr_output], segmented_vocabulary, segmented_pronunciations)
     
     #
     # Adaptor Grammar Experiments
