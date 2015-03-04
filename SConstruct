@@ -223,7 +223,7 @@ for language, properties in env["LANGUAGES"].iteritems():
         env.NormalizeMorfessorOutput("work/segmentations/morfessor/${LANGUAGE_NAME}_${PACK}.txt", segs)
         env.NormalizeMorfessorOutput("work/segmentations/morfessor/${LANGUAGE_NAME}_${PACK}_keywords.txt", kw_segs)
         
-        if pack in ["LLP", "VLLP"]:
+        if pack in ["LLP", "VLLP"] and False:
             characters = env.CharacterProductions("work/character_productions/${LANGUAGE_NAME}_${PACK}.txt", [data, keyword_text_file])
             pycfg_data = env.MorphologyData("work/ag_input/${LANGUAGE_NAME}_${PACK}_data.txt", [data, Value(properties.get("LOWER_CASE", True))])
             for model in ["prefix_suffix"]: #, "prefix", "suffix"]: #, "agglutinative"]:
@@ -252,7 +252,7 @@ for language, properties in env["LANGUAGES"].iteritems():
             env.Replace(ACOUSTIC_WEIGHT=properties.get("ACOUSTIC_WEIGHT", .09))
             baseline_asr_output = env.RunASR("work/asr_experiments/${LANGUAGE_NAME}/${PACK}/baseline", baseline_vocabulary, baseline_pronunciations, baseline_language_model)
             
-            baseline_kws_output = env.RunKWS("work/kws_experiments/${LANGUAGE_NAME}/${PACK}/baseline", baseline_asr_output[1:], baseline_vocabulary, baseline_pronunciations)
+            #baseline_kws_output = env.RunKWS("work/kws_experiments/${LANGUAGE_NAME}/${PACK}/baseline", baseline_asr_output[1:], baseline_vocabulary, baseline_pronunciations)
 
             segmented_pronunciations_training, morphs = env.SegmentedPronunciations(["work/pronunciations/${LANGUAGE_NAME}_${PACK}_morfessor_segmented.txt",
                                                                                      "work/pronunciations/${LANGUAGE_NAME}_${PACK}_morfessor_morphs.txt"],

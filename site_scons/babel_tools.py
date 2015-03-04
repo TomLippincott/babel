@@ -156,7 +156,7 @@ def transcripts_to_data(target, source, env):
     with meta_open(target[0].rstr(), "w") as ofd:
         DataSet.from_sentences(sentences).write(ofd)
     return None
-
+import codecs
 def stm_to_data(target, source, env):
     if source[0].rstr().endswith("tgz"):
         pattern = source[1].read()
@@ -167,7 +167,7 @@ def stm_to_data(target, source, env):
             elif len(names) > 1:
                 return "More than one file in archive %s matched pattern %s" % (source[0].rstr(), pattern)
             else:
-                text = tf.extractfile(names[0]).read()            
+                text = codecs.decode(tf.extractfile(names[0]).read(), "utf-8")
     else:
         return "Must provide an archive and file name pattern"
     sentences = [[w for w in x.split()[3:] if not (w.startswith("(") or w.startswith("<"))] for x in text.split("\n")]
