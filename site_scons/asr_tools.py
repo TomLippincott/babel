@@ -524,7 +524,7 @@ def run_asr(env, root_path, vocabulary, pronunciations, language_model, *args, *
     env.Replace(ROOT_PATH=root_path)
     dnet = env.ASRConstruct("${ROOT_PATH}/dnet.bin.gz", [vocabulary, pronunciations, language_model], PACK=env["PACK"], BABEL_ID=env["BABEL_ID"])
     tests = [dnet]
-    for i in [0]: #range(env["ASR_JOB_COUNT"]):
+    for i in range(env["ASR_JOB_COUNT"]):
         tests.append(env.ASRTest(["${ROOT_PATH}/ctm/%d.ctm" % i, "${ROOT_PATH}/lattice_list_%d.txt" % i],
                                  [dnet, vocabulary, pronunciations, language_model, env.Value({"JOB_ID" : i})], PACK=env["PACK"], BABEL_ID=env["BABEL_ID"]))
     return tests
