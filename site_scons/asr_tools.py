@@ -522,15 +522,19 @@ def asr_test(target, source, env):
 
 def run_asr(env, root_path, vocabulary, pronunciations, language_model, *args, **kw):
     env.Replace(ROOT_PATH=root_path)
-    dnet = env.ASRConstruct("${ROOT_PATH}/dnet.bin.gz", [vocabulary, pronunciations, language_model], PACK=env["PACK"], BABEL_ID=env["BABEL_ID"])
-    tests = [dnet]
-    if env["TEST_ASR"]:
-        to = 2
+    if env["RUN_ASR"]:
+        dnet = env.ASRConstruct("${ROOT_PATH}/dnet.bin.gz", [vocabulary, pronunciations, language_model], PACK=env["PACK"], BABEL_ID=env["BABEL_ID"])    
+        tests = [dnet]
+        if env["TEST_ASR"]:
+            to = 1
+        else:
+            to = env["ASR_JOB_COUNT"]
+        for i in range(to):
+            tests.append(env.ASRTest(["${ROOT_PATH}/ctm/${JOB_ID}.ctm", "${ROOT_PATH}/lattice_list_${JOB_ID}.txt"],
+                                     [dnet, vocabulary, pronunciations, language_model], PACK=env["PACK"], BABEL_ID=env["BABEL_ID"], JOB_ID=i))
     else:
-        to = env["ASR_JOB_COUNT"]
-    for i in range(to):
-        tests.append(env.ASRTest(["${ROOT_PATH}/ctm/${JOB_ID}.ctm", "${ROOT_PATH}/lattice_list_${JOB_ID}.txt"],
-                                 [dnet, vocabulary, pronunciations, language_model], PACK=env["PACK"], BABEL_ID=env["BABEL_ID"], JOB_ID=i))
+        existing = [re.match(r"^lattice_list_(\d+).txt$", os.path.basename(x.rstr())).group(1) for x in env.Glob("${ROOT_PATH}/lattice_list_[0-9]*.txt")]        
+        tests = [None] + [[env.File("${ROOT_PATH}/ctm/%s.ctm" % n), env.File("${ROOT_PATH}/lattice_list_%s.txt" % n)] for n in existing]
     return tests
 
 def TOOLS_ADD(env):

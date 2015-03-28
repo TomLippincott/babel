@@ -191,6 +191,9 @@ def fix_ids(target, source, env):
 
 def run_kws(env, experiment_path, asr_output, vocabulary, pronunciations, keyword_file, *args, **kw):
     env.Replace(EPSILON_SYMBOLS="'<s>,</s>,~SIL,<HES>'")
+
+    if not env["RUN_KWS"]:
+        return None
     
     database_file = env.Glob('${DATABASE_FILE}')[0]
     ecf_file = env.Glob("${ECF_FILE}")[0]
