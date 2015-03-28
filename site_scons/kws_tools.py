@@ -103,12 +103,13 @@ def munge_dbfile(target, source, env):
     NEEDS WORK!
     Converts a database file.
     """
+    args = source[-1].read()
     with meta_open(source[1].rstr()) as fd:
         lattice_files = set([os.path.basename(x.strip()) for x in fd])
     ofd = meta_open(target[0].rstr(), "w")
     for line in meta_open(source[0].rstr()):
         toks = line.split()
-        fname = "%s.fsm.gz" % ("#".join(toks[0:2]))
+        fname = "%s.%s" % ("#".join(toks[0:2]), args["ext"])
         if fname in lattice_files:
             ofd.write(" ".join(toks[0:4] + ["0.0", toks[5]]) + "\n")
     ofd.close()
@@ -116,11 +117,12 @@ def munge_dbfile(target, source, env):
 
 def keyword_xml_to_text(target, source, env):
     with meta_open(source[0].rstr(), enc=None) as ifd:
-        keywords = set(sum([k.text.split() for k in et.parse(ifd).getiterator("kwtext")], []))
+        words = sum([k.text.split() for k in et.parse(ifd).getiterator("kwtext")], [])
+        words = set(sum([w.strip("-").split("-") for w in words if "_" not in w], []))
     with meta_open(target[0].rstr(), "w") as ofd:
         #x = list(keywords)[0]
         #print dir(x)
-        ofd.write(("\n".join([" ".join(["^^^"] + [c for c in x] + ["$$$"]) for x in keywords])))
+        ofd.write(("\n".join([" ".join(["^^^"] + [c for c in x] + ["$$$"]) for x in words])))
     return None
 
 def create_data_list(target, source, env):
@@ -136,11 +138,12 @@ def create_data_list(target, source, env):
         data[toks[0]] = data.get(toks[0], {})
         data[toks[0]][toks[1]] = (bn, toks[4], toks[5])
     ofd = meta_open(target[0].rstr(), "w")
-    for lattice_file in glob(os.path.join(args["LATTICE_DIR"], "*")):
+    for lattice_file in glob(os.path.join(args["LATTICE_DIR"], "*%s" % (args["oldext"]))):
         bn = os.path.basename(lattice_file)
         path = os.path.join(env["BASE_PATH"], "lattices")
         uttname, delim, uttnum = re.match(r"(.*)([^\w])(\d+)\.%s$" % (args["oldext"]), bn).groups()
         try:
+            #print uttname, uttnum
             name, time, timeend = data[uttname][uttnum]
             newname = os.path.abspath(os.path.join(path, "%s%s%s.%s" % (uttname, delim, uttnum, args["ext"])))
             #ofd.write(env.subst("%s %s %s %s %s.osym %s" % (os.path.splitext(name)[0], time, timeend, newname, newname, os.path.abspath(lattice_file))) + "\n")
@@ -159,6 +162,17 @@ def get_file_list(target, source, env):
         ofd.write("\n".join([os.path.abspath(x.rstr()) for x in source]) + "\n")
     return None
 
+def oov_pronunciations(target, source, env):
+    with meta_open(source[0].rstr()) as ifd:
+        known_words = set([re.match(r"^(.*)\(\d+\)$", l.split()[0]).group(1) for l in ifd])
+    with meta_open(source[0].rstr()) as ifd:
+        unknown_words = set(sum([[w for w in l.strip().split() if w not in known_words] for l in ifd], []))
+    with meta_open(target[0].rstr(), "w") as ofd:
+        for w in unknown_words:
+            pronunciation = ["u%.4x" % (ord(c)) for c in w]
+            ofd.write("%s(01) %s\n" % (w, " ".join(pronunciation)))
+    return None
+
 def fix_ids(target, source, env):
     term_map = {}
     with meta_open(source[1].rstr()) as ifd:
@@ -175,7 +189,73 @@ def fix_ids(target, source, env):
         xml.write(ofd)        
     return None
 
-def run_kws(env, experiment_path, asr_output, vocabulary, pronunciations, *args, **kw):
+def run_kws(env, experiment_path, asr_output, vocabulary, pronunciations, keyword_file, *args, **kw):
+    env.Replace(EPSILON_SYMBOLS="'<s>,</s>,~SIL,<HES>'")
+    
+    database_file = env.Glob('${DATABASE_FILE}')[0]
+    ecf_file = env.Glob("${ECF_FILE}")[0]
+    rttm_file = env.Glob("${RTTM_FILE}")[0]
+    devinfo = env.File("${MODEL_PATH}/devinfo")
+    p2p_file = env.File("${P2P_FILE}")
+    expid = os.path.basename(ecf_file.rstr()).split("_")[0]
+
+    iv_query_terms, oov_query_terms, term_map, word_to_word_fst, kw_file = env.QueryFiles([pjoin(experiment_path, x) for x in ["iv_queries.txt", 
+                                                                                                                              "oov_queries.txt",
+                                                                                                                              "term_map.txt",
+                                                                                                                              "word_to_word.fst",
+                                                                                                                              "kwfile.xml"]], 
+                                                                                         [keyword_file, pronunciations, env.Value(str(env["BABEL_ID"])), env.Value("")])
+
+    env.KeywordSymbols(pjoin(experiment_path, "keywords.sym"), [iv_query_terms, oov_query_terms])
+
+    oov_pronunciations = env.OOVPronunciations(pjoin(experiment_path, "oov_pronunciations.txt"), [pronunciations, oov_query_terms])
+    
+    fst_header, phone_symbols, word_symbols, p2w_fsm, p2w_fst, w2p_fsm, w2p_fst = env.WordsToPhones(
+        [pjoin(experiment_path, x) for x in ["fst_header", "phones.sym", "words.sym", "phones2words.fsm", "phones2words.fst", "words2phones.fsm", "words2phones.fst"]],
+        [pronunciations, oov_pronunciations]
+    )
+
+    p2p_fst = env.PhonesToPhones(pjoin(experiment_path, "P2P.fst"), p2p_file)
+    return None
+    wordpron = env.WordPronounceSymTable(pjoin(experiment_path, "in_vocabulary_symbol_table.txt"),
+                                         pronunciations)
+
+    vocabulary_symbols = env.CleanPronounceSymTable(pjoin(experiment_path, "cleaned_in_vocabulary_symbol_table.txt"),
+                                                    wordpron)
+
+    #p2p_fst = env.FSTCompile(pjoin(experiment_path, "p2p_fst.txt"),
+    #                         [vocabulary_symbols, word_to_word_fst])
+
+    iv_queries = env.QueryToPhoneFST(pjoin(experiment_path, "iv_queries", "list.txt"), 
+                                     [p2p_fst, vocabulary_symbols, vocabulary, iv_query_terms], I=1, n=1)
+
+    oov_queries = env.QueryToPhoneFST(pjoin(experiment_path, "oov_queries", "list.txt"), 
+                                      [p2p_fst, vocabulary_symbols, vocabulary, oov_query_terms], I=1, n=1)
+
+    ivs = []
+    oovs = []
+    for ctm, lattice_list in asr_output:
+        i = int(re.match(r".*?(\d+).ctm$", ctm.rstr()).group(1))
+        indexed = env.MakeIndex(pjoin(experiment_path, "index-%d.fst" % i), [lattice_list])
+        ivs.append(env.SearchQueries(pjoin(experiment_path, "IV_results", "result.clean.%d" % i), [iv_queries, indexed], JOB=i))
+        oovs.append(env.SearchQueries(pjoin(experiment_path, "OOV_results", "result.clean.%d" % i), [oov_queries, indexed], JOB=i))
+
+    iv_xml = env.Glob("${IBM_MODELS}/${BABEL_ID}/${PACK}/KWS-resources/kws-resources-IndusDB.20141020/template.iv.xml")[0]
+    oov_xml = env.Glob("${IBM_MODELS}/${BABEL_ID}/${PACK}/KWS-resources/kws-resources-IndusDB.20141020/template.oov.xml")[0]
+    iv_comb = env.CombineCN([pjoin(experiment_path, x) for x in ["iv_temp_1.txt", "iv_temp_2.txt", "iv.xml"]],
+                            [iv_xml] + ivs, NIST_EXPID_CORPUS=expid, LANGUAGE_TEXT=env.subst("${LANGUAGE_NAME}").replace("_", ""))
+    oov_comb = env.CombineCN([pjoin(experiment_path, x) for x in ["oov_temp_1.txt", "oov_temp_2.txt", "oov.xml"]],
+                             [oov_xml] + oovs, NIST_EXPID_CORPUS=expid, LANGUAGE_TEXT=env.subst("${LANGUAGE_NAME}").replace("_", ""))
+    iv_sto_norm = env.SumToOneNormalize(pjoin(experiment_path, "iv_norm.xml"), iv_comb[-1])
+    oov_sto_norm = env.SumToOneNormalize(pjoin(experiment_path, "oov_norm.xml"), oov_comb[-1])
+    merged = env.MergeIVOOVCascade(pjoin(experiment_path, "merged.xml"), [iv_sto_norm, oov_sto_norm])
+
+    dt = env.ApplyRescaledDTPipe(pjoin(experiment_path, "dt.kwslist.xml"), [devinfo, database_file, ecf_file, merged])
+    #kws_score = env.BabelScorer([pjoin(experiment_path, "score.%s" % x) for x in ["alignment.csv", "bsum.txt", "sum.txt"]],
+    #                            [ecf_file, rttm_file, keyword_file, dt])
+    return None
+    
+def run_lattice_kws(env, experiment_path, asr_output, vocabulary, pronunciations, *args, **kw):
     env.Replace(EPSILON_SYMBOLS="'<s>,</s>,~SIL,<HES>'")
     
     keyword_file = env.Glob("${KEYWORD_FILE}")[0]
@@ -244,7 +324,7 @@ def run_kws(env, experiment_path, asr_output, vocabulary, pronunciations, *args,
                                               [xml_template, data_list, idx, isym, osym, iv_queries]))
         oov_searches.append(env.StandardSearch(pjoin(experiment_path, "oov_search_output-%d.txt" % (i)),
                                                [xml_template, data_list, idx, isym, osym, oov_queries]))
-    
+
     iv_search_outputs = env.GetFileList(pjoin(experiment_path, "iv_search_outputs.txt"), iv_searches)
     iv_merged = env.MergeSearchFromParIndex(pjoin(experiment_path, "iv_merged.txt"), iv_search_outputs)
     iv_sto_norm = env.SumToOneNormalize(pjoin(experiment_path, "iv_sto_norm.txt"), iv_merged)
@@ -276,7 +356,7 @@ def TOOLS_ADD(env):
         "QueryFiles" : Builder(action=query_files),
         "BuildPadFST" : Builder(action="${BUILDPADFST} ${SOURCE} ${TARGET}"),
         "FSTCompile" : Builder(action="${FSTCOMPILE} --isymbols=${SOURCES[0]} --osymbols=${SOURCES[0]} ${SOURCES[1]} > ${TARGETS[0]}"), 
-        "QueryToPhoneFST" : Builder(action="${QUERY2PHONEFST} -p ${SOURCES[0]} -s ${SOURCES[1]} -d ${SOURCES[2]} -l ${TARGETS[0]} -n ${n} -I ${I} ${OUTDIR} ${SOURCES[3]} 2> /dev/null"),
+        "QueryToPhoneFST" : Builder(action="${QUERY2PHONEFST} -p ${SOURCES[0]} -s ${SOURCES[1]} -d ${SOURCES[2]} -l ${TARGETS[0]} -n ${NBESTP2P} -I ${MINPHLENGTH} ${TARGETS[0].get_dir()} ${SOURCES[3]} 2> /dev/null"),
         "MergeIVOOVCascade" : Builder(action="perl ${MERGEIVOOVCASCADE} ${SOURCES[0]} ${SOURCES[1]} ${TARGETS[0]}"),
         "LatticeToIndex" : Builder(action="${LAT2IDX} -D ${SOURCES[0]} -s ${SOURCES[1]} -d ${SOURCES[2]} -S ${EPSILON_SYMBOLS} -I ${TARGETS[0]} -i ${TARGETS[1]} -o ${TARGETS[2]} 2> /dev/null"),
         "StandardSearch" : Builder(action="${STDSEARCH} -F ${TARGETS[0]} -a IARPA-babel${BABEL_ID}_conv-dev.kwlist.xml -d ${SOURCES[1]} -i ${SOURCES[2]} -s ${SOURCES[3]} -b KW${BABEL_ID}-0 -o ${SOURCES[4]} ${SOURCES[5]} 2> /dev/null"),
@@ -285,6 +365,38 @@ def TOOLS_ADD(env):
         "ApplyRescaledDTPipe" : Builder(action="python ${APPLYRESCALEDDTPIPE} ${SOURCES[0]} ${SOURCES[1]} ${SOURCES[2]} < ${SOURCES[3]} > ${TARGETS[0]} 2> /dev/null"),
         "BabelScorer" : Builder(action="perl -X ${BABELSCORER} -e ${SOURCES[0]} -r ${SOURCES[1]} -t ${SOURCES[2]} -s ${SOURCES[3]} -c -o -b -d -a --ExcludePNGFileFromTxtTable -f ${'.'.join(TARGETS[0].rstr().split('.')[0:-2])} -y TXT"),
         "KeywordXMLToText" : Builder(action=keyword_xml_to_text),
+        
+        #"CNQueryFile" : Builder(action="python ${KWS_SCRIPTS}/term.py ${SOURCES} > ${TARGET}"),
+        "KeywordSymbols" : Builder(action="perl ${CN_KWS_SCRIPTS}/kwdsym.pl ${SOURCES} ${TARGET.get_dir()}"),
+        "OOVPronunciations" : Builder(action=oov_pronunciations),
+        "WordsToPhones" : Builder(action="perl ${CN_KWS_SCRIPTS}/create_wp.pl ${SOURCES[0]} ${SOURCES[1]} ${TARGET.get_dir()} ${TRANSPARENT}"),
+        "PhonesToPhones" : Builder(action="perl ${CN_KWS_SCRIPTS}/create_p2p.pl ${SOURCES[0]} ${TARGET.get_dir()} ${ADD_DELETE} ${ADD_INSERT}"),
+        #"CreateQueryFSTs" : Builder(action="perl ${CN_KWS_SCRIPTS}/create_query_fsts.pl ${SOURCES[0]} ${OUTDIR} ${SOURCES[1].get_dir()} P2P.fst ${NBESTP2P} ${MINPHLENGTH}"),
+        ## python ${KWS_SCRIPTS}/term.py ${IV_XML_TEMPLATE} ${IV_QUERY_FILE} > ${IV_QUERY}
+        ## python ${KWS_SCRIPTS}/term.py ${OOV_XML_TEMPLATE} ${OOV_QUERY_FILE} > ${OOV_QUERY}
+        ## perl ${KWS_SCRIPTS}/kwdsym.pl ${IV_QUERY} ${OOV_QUERY} ${DATA_FST}
+        ## #create words2phones.fst,  phones2words.fst  words.isyms  phones.isyms
+        ## perl ${KWS_SCRIPTS}/create_wp.pl ${DICT_IV} ${DICT_OOV} ${DATA_FST} ${TRANSPARENT}
+        ## #create p2p fst
+        ## perl ${KWS_SCRIPTS}/create_p2p.pl ${P2P} ${DATA_FST} ${addDEL} ${addINS}
+        ## perl ${KWS_SCRIPTS}/split_list.pl  ${FILE} ${JOB} ${JOBN} | perl ${KWS_SCRIPTS}/create_query_fsts.pl - ${OUTDIR} ${DATA_FST} P2P.fst ${NBESTP2P} ${MINPHLENGTH}
+        "MakeIndex" : Builder(action=["perl ${CN_KWS_SCRIPTS}/make_index.pl ${SOURCES[0]} ${TARGETS[0].base}.fsm ${PRINT_WORDS_THRESH} ${PRINT_EPS_THRESH} ${TRANSPARENT}",
+                                      "perl ${CN_KWS_SCRIPTS}/compile_fst_index.sym.pl ${TARGETS[0].base}.fsm ${TARGETS[0].get_dir()} ${CN_KWS_SCRIPTS}"]),
+        ## perl  ${KWS_SCRIPTS}/split_list.pl ${LIST} ${JOB} ${JOBN} | perl ${KWS_SCRIPTS}/make_index.pl - ${INDEX}/index.part${JOB}.fsm ${PRINT_WORDS_THRESH} ${PRINT_EPS_THRESH} ${TRANSPARENT}
+        ## perl ${KWS_SCRIPTS}/compile_fst_index.sym.pl $INDEX/index.part${JOB}.fsm ${DATA_FST} ${KWS_SCRIPTS}
+        "SearchQueries" : Builder(action="perl ${CN_KWS_SCRIPTS}/search_queries.pl ${SOURCES[0]} ${SOURCES[1]} ${CN_KWS_SCRIPTS} ${SOURCES[1].get_dir()} ${JOB} ${PRUNE} ${TARGETS[0].get_dir()} 2> /dev/null"),
+        ## ls ${QUERY_DIR}/KW*.p2p2w.${NBESTP2P}.fst  |  perl ${KWS_SCRIPTS}/search_queries.pl - ${INDEX}/index.part${JOB}.fst ${KWS_SCRIPTS} ${DATA_FST} ${JOB} ${PRUNE} ${RESULT}
+        "CombineCN" : Builder(action=["cat ${SOURCES[1:]} > ${TARGETS[0]}",
+                                      "cat ${TARGETS[0]} > ${TARGETS[1]}",
+                                      #"perl ${CN_KWS_SCRIPTS}/check_result.pl < ${TARGETS[0]} > ${TARGETS[1]}",
+                                      "perl  ${CN_KWS_SCRIPTS}/convert_CN.pl ${TARGETS[1]} ${NIST_EXPID_CORPUS} ${LANGUAGE_TEXT} ${SOURCES[0]} > ${TARGETS[2]}"
+                                      
+                                  ])
+        ## cat ${RESULT}/result.clean.* | perl ${KWS_SCRIPTS}/check_result.pl |  perl  ${KWS_SCRIPTS}/convert_CN.pl - ${NIST_EXPID_CORPUS} ${LANGUAGE_TEXT} ${XML_TEMPLATE} > ${RESULT}/result.kwslist.xml
+        ## perl ${KWS_SCRIPTS}/applySTONormalization.gamma.thresh.prl < ${RESULT}/result.kwslist.xml > ${RESULT}/result.STO.kwslist.xml
+        ## perl ${KWS_SCRIPTS}/merge_iv_oov_cascade_v3.pl RESULT_IV/result.STO.kwslist.xml RESULT_OOV/result.STO.kwslist.xml result.xml
+        # python ${KWS_SCRIPTS}/applyRescaledDTpipe.py ${DEVINFOFILE} ${DBFILE} ${DEV_ECF} < result.xml > result.2.xml
+
     }
     
     env.AddMethod(run_kws, "RunKWS")

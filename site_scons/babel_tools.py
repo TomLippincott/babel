@@ -22,6 +22,7 @@ import tarfile
 from random import randint, shuffle
 from common_tools import DataSet, meta_open
 import time
+import codecs
 
 def bad_word(w):
     return (w.startswith("*") and w.endswith("*")) or (w.startswith("<") and w.endswith(">")) or (w.startswith("(") and w.endswith(")"))
@@ -156,7 +157,7 @@ def transcripts_to_data(target, source, env):
     with meta_open(target[0].rstr(), "w") as ofd:
         DataSet.from_sentences(sentences).write(ofd)
     return None
-import codecs
+
 def stm_to_data(target, source, env):
     if source[0].rstr().endswith("tgz"):
         pattern = source[1].read()
@@ -812,7 +813,28 @@ def segment_transcripts(target, source, env):
         ofd.write("\n".join([" ".join(s) for s in sentences]))
     return None
 
-
+def vocabulary_comparison(target, source, env):
+    data = {}
+    for fname in [x.rstr() for x in source]:
+        toks = os.path.basename(fname).split(".")[0].split("_")
+        language = "_".join(toks[:-1])
+        pack = toks[-1]
+        data[language] = data.get(language, {})
+        data[language][pack] = {}
+        with meta_open(fname) as ifd:
+            for line in ifd:
+                for word in line.lower().split():
+                    data[language][pack][word] = data[language][pack].get(word, 0) + 1
+    with meta_open(target[0].rstr(), "w") as ofd:
+        for language, packs in data.iteritems():
+            vllp = set(packs.get("VLLP", packs.get("LLP", {})).keys())
+            flp = set(packs["FLP"].keys())
+            just_vllp = len([x for x in vllp if x not in flp])
+            just_flp = len([x for x in flp if x not in vllp])
+            both = len(flp) - just_flp
+            #ofd.write("%s\t%d\t%d\t%d\t%d\t%d\n" % (language, len(vllp), len(flp), just_vllp, just_flp, both))
+            ofd.write("%s\t%f\t%f\n" % (language, float(just_flp) / len(flp), sum([packs["FLP"][x] for x in flp if x not in vllp]) / float(sum(packs["FLP"].values()))))
+    return None
 
 def TOOLS_ADD(env):
     env.Append(BUILDERS = {
@@ -829,6 +851,7 @@ def TOOLS_ADD(env):
         "BuildPropertyTables" : Builder(action=build_property_tables, emitter=build_property_tables_emitter),
         "BuildExtrinsicTables" : Builder(action=build_extrinsic_tables, emitter=build_extrinsic_tables_emitter),
         "SegmentTranscripts" : Builder(action=segment_transcripts),
+        "VocabularyComparison" : Builder(action=vocabulary_comparison),
     })
     #env.AddMethod(run_asr, "RunASR")
     #env.AddMethod(run_kws, "RunKWS")

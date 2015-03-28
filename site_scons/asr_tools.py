@@ -191,8 +191,8 @@ def asr_test(target, source, env):
     #
     # based on Zulu LLP
     #
-    dnet, vocabulary, pronunciations, language_model, args = source
-    args = args.read()
+    dnet, vocabulary, pronunciations, language_model = source
+    #args = args.read()
     out_path, tail = os.path.split(os.path.dirname(target[0].rstr()))
     env.Replace(VOCABULARY_FILE=vocabulary.rstr(),
                 PRONUNCIATIONS_FILE=pronunciations.rstr(),
@@ -267,7 +267,7 @@ def asr_test(target, source, env):
     #
     # from test.py
     #
-    jid    = args.get("JOB_ID", 0)
+    jid    = int(env["JOB_ID"])
     jnr    = int(env["ASR_JOB_COUNT"])
     genLat = True
     genCons = True
@@ -524,9 +524,13 @@ def run_asr(env, root_path, vocabulary, pronunciations, language_model, *args, *
     env.Replace(ROOT_PATH=root_path)
     dnet = env.ASRConstruct("${ROOT_PATH}/dnet.bin.gz", [vocabulary, pronunciations, language_model], PACK=env["PACK"], BABEL_ID=env["BABEL_ID"])
     tests = [dnet]
-    for i in range(env["ASR_JOB_COUNT"]):
-        tests.append(env.ASRTest(["${ROOT_PATH}/ctm/%d.ctm" % i, "${ROOT_PATH}/lattice_list_%d.txt" % i],
-                                 [dnet, vocabulary, pronunciations, language_model, env.Value({"JOB_ID" : i})], PACK=env["PACK"], BABEL_ID=env["BABEL_ID"]))
+    if env["TEST_ASR"]:
+        to = 2
+    else:
+        to = env["ASR_JOB_COUNT"]
+    for i in range(to):
+        tests.append(env.ASRTest(["${ROOT_PATH}/ctm/${JOB_ID}.ctm", "${ROOT_PATH}/lattice_list_${JOB_ID}.txt"],
+                                 [dnet, vocabulary, pronunciations, language_model], PACK=env["PACK"], BABEL_ID=env["BABEL_ID"], JOB_ID=i))
     return tests
 
 def TOOLS_ADD(env):
