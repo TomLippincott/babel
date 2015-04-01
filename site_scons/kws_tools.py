@@ -217,17 +217,17 @@ def run_kws(env, experiment_path, asr_output, vocabulary, pronunciations, keywor
         [pjoin(experiment_path, x) for x in ["fst_header", "phones.sym", "words.sym", "phones2words.fsm", "phones2words.fst", "words2phones.fsm", "words2phones.fst"]],
         [pronunciations, oov_pronunciations]
     )
-
-    p2p_fst = env.PhonesToPhones(pjoin(experiment_path, "P2P.fst"), p2p_file)
-    return None
+    #return None
+    #p2p_fst = env.PhonesToPhones(pjoin(experiment_path, "P2P.fst"), p2p_file)
+    #return None
     wordpron = env.WordPronounceSymTable(pjoin(experiment_path, "in_vocabulary_symbol_table.txt"),
                                          pronunciations)
 
     vocabulary_symbols = env.CleanPronounceSymTable(pjoin(experiment_path, "cleaned_in_vocabulary_symbol_table.txt"),
                                                     wordpron)
 
-    #p2p_fst = env.FSTCompile(pjoin(experiment_path, "p2p_fst.txt"),
-    #                         [vocabulary_symbols, word_to_word_fst])
+    p2p_fst = env.FSTCompile(pjoin(experiment_path, "p2p_fst.txt"),
+                             [vocabulary_symbols, word_to_word_fst])
 
     iv_queries = env.QueryToPhoneFST(pjoin(experiment_path, "iv_queries", "list.txt"), 
                                      [p2p_fst, vocabulary_symbols, vocabulary, iv_query_terms], I=1, n=1)

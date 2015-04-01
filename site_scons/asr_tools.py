@@ -7,6 +7,7 @@ from scons_tools import ThreadedBuilder, threaded_run
 import re
 from glob import glob
 from functools import partial
+import tarfile
 import logging
 import os.path
 import os
@@ -63,7 +64,7 @@ class CFG():
     latDir = '${LATTICE_PATH}'
     useDispatcher = False
     priors = '${PRIORS_FILE}'
-    #misc.errorMax = 150000
+    misc.errorMax = 150000
     errorHandler.setVerbosity(errorHandler.ERROR_LOG)
     nn = None
     def __str__(self):
@@ -197,25 +198,11 @@ def asr_test(target, source, env):
     env.Replace(VOCABULARY_FILE=vocabulary.rstr(),
                 PRONUNCIATIONS_FILE=pronunciations.rstr(),
                 LANGUAGE_MODEL_FILE=language_model,
-                CTM_PATH=os.path.join(out_path, "ctm"),
-                LATTICE_PATH=os.path.join(out_path, "lat"),
-                #ACOUSTIC_WEIGHT=.060,                
                 GRAPH_FILE=dnet,
     )
         
     cfg = CFG(env)
-
-
-
     postThresh = 1e-04
-
-    # fe.ctx2           = frontend.FeCTX([fe.fmllr])
-    # fe.ctx2.spliceN   = 4
-    # fe.ctx2.db        = db
-    # fe.pcm.pcmDir     = env.subst('${PCM_PATH}')
-    # fe.norm.normDir = env.subst('${CMS_PATH}')
-    # fe.fmllr.fmllrDir = env.subst('${FMLLR_PATH}')
-    # fe.norm.normMode  = 1
 
     mlpFile = env.maybe(env.subst("${MLP_FILE}"))
     melFile = env.maybe(env.subst("${MEL_FILE}"))
@@ -237,33 +224,6 @@ def asr_test(target, source, env):
     fe.norm.normDir   = env.subst("${CMS_PATH}") #cfg.cms'cms/'
     fe.fmllr.fmllrDir = env.subst("${FMLLR_PATH}") #'fmllr/'
     
-    # if mlp:
-    #     fe.mlp.depL       = [fe.ctx2]
-    #     fe.mlp.db         = db
-    #     fe.end            = fe.mlp
-    # elif layer:
-    #     fe.end            = fe.ctx2
-    #     layerL = []
-    #     for i in range(6):
-    #         l = nnet.LayerWeights()
-    #         l.name = 'layer%d'%i
-    #         l.isTrainable = False
-    #         l.initWeightFile = env.subst('${MODEL_PATH}/layer%d') % i
-    #         layerL.append(l)
-    #         if i < 5:
-    #             l = nnet.LayerSigmoid()
-    #             l.name = 'layer%d-nonl' % i
-    #             layerL.append(l)
-    #     layerL[-1].matrixOut = True
-    #     nn = nnet.NeuralNet(layerL=layerL, depL=[fe.end])
-    #     nn.db = db
-    # elif nmlp:
-    #     fe.end = fe.fmllr
-    # else:
-    #     return "error!"
-
-
-
     #
     # from test.py
     #
@@ -279,32 +239,19 @@ def asr_test(target, source, env):
     else:
         chunkSize = 5
     acweight = float(env.subst("${ACOUSTIC_WEIGHT}"))
-    # # ------------------------------------------
-    # # Boot
-    # # ------------------------------------------
     db.init(cfg.dbFile, 'utterance', False, jid, jnr, chunkSize=chunkSize)
 
     fe.mel.readFilter(melFile)
     fe.mel.readWarp(warpFile)
     fe.lda.readLDA(ldaFile)    
 
-    # # decoder
     se = dsearch.Decoder(speed=12, scale=acweight, lmType=32, genLat=genLat)
         
-    #if nmlp:
-    #    se.initAM(cfg)    
-        #se.initGraph(cfg, mmapFlag=True)
-    #else:
     se.initGraph(cfg)
     se.latBeam  = 7
     se.linkMax  = 700
-    rescoreBeam = 2.0
-    #fe = cfg.fe
+
     if mlp:
-        #print 1
-        #fe.mel.readFilter(melFile)
-        #fe.mel.readWarp(warpFile)
-        #fe.lda.readLDA(ldaFile)
         fe.ctx2           = frontend.FeCTX([fe.fmllr])
         fe.ctx2.spliceN   = 4
         fe.ctx2.db        = db
@@ -355,7 +302,6 @@ def asr_test(target, source, env):
         se.sc.logInput = True
         se.sc.readPriors(priorsFile)
     elif nmlp:
-        #print 3
         se.initAM(cfg)    
         mlp      = fe.mlp.mlp
         mlp.feat = MatrixCU()
@@ -365,7 +311,7 @@ def asr_test(target, source, env):
         softmax  = Act_Softmax()
         softmax.logOutput = True
 
-        mlp.read(mlpFile) #'%s/%d.mlp'%(cfg.modelDir,cfg.itr))
+        mlp.read(mlpFile)
         for layerX in range(mlp.layerL.size()):
             mlp.layerL[layerX].afct = sigmoid
         mlp.layerL[-1].afct = actid
@@ -379,14 +325,10 @@ def asr_test(target, source, env):
 
         se.latBeam  = 6.5
         se.linkMax  = 700
-        rescoreBeam = 2.0
 
-        # consensus parameters for KWS
-        #postThresh        = 1.0e-06
         binThresh         = 1.0e-10
         writeSIL          = 0
 
-        # density statistics
         totUtt    = 0
         totArc    = 0
         totNonSil = 0
@@ -395,74 +337,9 @@ def asr_test(target, source, env):
     else:
         return "Don't know how to run ASR with these models!"
 
-    misc.makeDir(cfg.latDir)
-
-    # if nmlp:
-    #     def process(utt, ctmF, cctmF):
-    #         #global totUtt, totArc, totNonSil, totDur, totDens
-    #         fe.end.eval(utt)
-    #         se.voc.lmap[se.voc.pronL.index("<s>(01)")] = se.voc.wordL.index("<s>")
-    #         se.voc.lmap[se.voc.pronL.index("</s>(01)")] = se.voc.wordL.index("</s>")
-    #         se.search()
-    #         se.rescore(rescoreBeam)
-    #         arcN = len(se.lat.arcs)
-    #         durS = db.getTo(utt)- db.getFrom(utt)
-    #         dens = arcN / durS
-    #         return
-    #         totDur  += durS
-    #         totArc  += arcN
-    #         totDens += dens
-    #         totUtt  += 1
-    #         # se.lat.write(cfg.latDir+utt+'.fsm.gz',db.getFrom(utt))
-    #         se.voc.lmap[se.voc.pronL.index("<s>(01)")] = se.voc.optWordX
-    #         se.voc.lmap[se.voc.pronL.index("</s>(01)")] = se.voc.optWordX
-    #         if (se.lat.arcs.size() < 100000):
-    #             postThresh=1e-08
-    #         elif (se.lat.arcs.size() < 500000):
-    #             postThresh=1e-06
-    #         else:
-    #             postThresh=1e-05
-    #         se.consensus(postThresh)
-    #         key    = utt + ' ' + os.path.splitext(db.getFile(utt))[0]
-    #         tscore = se.getScore()
-    #         txt    = se.getConsHyp().strip()
-    #         vithyp = se.getCTM(key,db.getFrom(utt))
-    #         cnhyp   = se.getConsCTM(key,db.getFrom(utt))
-    #         print utt,'score= %.5f frameN= %d'%(tscore,se.dnet.state.frameN)
-    #         print utt,'words=',txt
-    #         for c in vithyp: ctmF.write(c+'\n')
-    #         for c in cnhyp: cctmF.write(c+'\n')
-    #         se.cons.write(cfg.consDir+utt+'.cons.gz',db.getFrom(utt),binThresh,writeSIL)
-    #         sys.stdout.flush()
-    #     ctmF  = open(cfg.ctmDir+options.jid+'.ctm','w')
-    #     cctmF = open(cfg.cctmDir+options.jid+'.ctm','w')
-    #     for utt in db:
-    #         process(utt,ctmF,cctmF)
-
-    # if not nmlp:
-    # with open(target[0].rstr(), "w") as ofd, open(target[1].rstr(), "w") as lattice_list_ofd:
-    #     for utt in db:
-    #         fe.end.eval(utt)
-    #         se.voc.lmap[se.voc.pronL.index("<s>(01)")] = se.voc.wordL.index("<s>")
-    #         se.voc.lmap[se.voc.pronL.index("</s>(01)")] = se.voc.wordL.index("</s>")
-    #         se.search()
-    #         #se.rescore(rescoreBeam)
-    #         continue
-    #         key    = utt + ' ' + os.path.splitext(cfg.db.getFile(utt))[0]
-    #         txt    = se.getHyp().strip()
-    #         hyp    = se.getCTM(key, cfg.db.getFrom(utt))
-    #         tscore = se.getScore()
-    #         for c in hyp:
-    #             print >>ofd,c
-    #         if genLat:
-    #             se.rescore(rescoreBeam)
-    #             fname = os.path.abspath(os.path.join(cfg.latDir,"%s.fsm.gz" % utt))
-    #             lattice_list_ofd.write("%s\n" % (fname))
-    #             se.lat.write(fname, cfg.db.getFrom(utt))
-
-    # return None
-    with open(target[0].rstr(), "w") as ofd, open(target[1].rstr(), "w") as lattice_list_ofd:
+    with meta_open(target[0].rstr(), "w") as ctm_ofd, tarfile.open(target[1].rstr(), "w|gz") as tf_ofd, temp_file() as temp_fname:
         for utt in db:
+            key    = utt + ' ' + os.path.splitext(db.getFile(utt))[0]
             if mlp:
                 fe.end.eval(utt)
             elif nmlp:
@@ -471,20 +348,26 @@ def asr_test(target, source, env):
                 #se.voc.lmap[se.voc.pronL.index("</s>(01)")] = se.voc.wordL.index("</s>")
             else:
                 nn.eval(utt)
+
             se.search()
-            key    = utt + ' ' + os.path.splitext(db.getFile(utt))[0]
-            #txt    = se.getHyp().strip()
-            #hyp    = se.getCTM(key, db.getFrom(utt))
-            #tscore = se.getScore()
-            #for c in hyp:
-            #    print >>ofd,c
-            se.rescore(rescoreBeam)
+
+            txt    = se.getHyp().strip()
+            hyp    = se.getCTM(key, db.getFrom(utt))
+            tscore = se.getScore()
+            for c in hyp:
+                ctm_ofd.write("%s\n" % (c))
+            se.rescore(env["RESCORE_BEAM"])
+            with meta_open(temp_fname, "w") as ofd:
+                pass
             if writeLat:
                 
-                fname = os.path.abspath(os.path.join(cfg.latDir,"%s.fsm.gz" % utt))
-                lattice_list_ofd.write("%s\n" % (fname))
-                se.lat.write(fname, db.getFrom(utt))
-            if writeCons:
+                #fname = os.path.abspath(os.path.join(cfg.latDir,"%s.fsm.gz" % utt))
+                fname = "%s.fsm.gz" % (utt)
+                #lattice_list_ofd.write("%s\n" % (fname))
+                se.lat.write(temp_fname, db.getFrom(utt))
+            elif writeCons:
+                fname = "%s.cons.gz" % (utt)
+                #fname = os.path.abspath(os.path.join(cfg.latDir, "%s.cons.gz" % utt))
                 #rescoreBeam = 2.0
                 #se.rescore(rescoreBeam)
                 arcN = len(se.lat.arcs)
@@ -500,24 +383,12 @@ def asr_test(target, source, env):
                 #     postThresh=1e-05
 
                 se.consensus(postThresh)
-                #key    = utt + ' ' + os.path.splitext(db.getFile(utt))[0]
-                #tscore = se.getScore()
-                #txt    = se.getConsHyp().strip()
-                #vithyp = se.getCTM(key,db.getFrom(utt))
-                #cnhyp   = se.getConsCTM(key,db.getFrom(utt))
-                #print utt,'score= %.5f frameN= %d'%(tscore,se.dnet.state.frameN)
-                #print utt,'words=',txt
-                #for c in vithyp:
-                #    ctmF.write(c+'\n')
-                #for c in cnhyp:
-                #    cctmF.write(c+'\n')
-                ##postThresh        = 1.0e-06
                 binThresh         = 1.0e-10
                 writeSIL          = 0
-                fname = os.path.abspath(os.path.join(cfg.latDir, "%s.cons.gz" % utt))
-                lattice_list_ofd.write("%s\n" % (fname))
-                se.cons.write(fname, db.getFrom(utt), binThresh, writeSIL)
-                #sys.stdout.flush()
+                #lattice_list_ofd.write("%s\n" % (fname))
+                se.cons.write(temp_fname, db.getFrom(utt), binThresh, writeSIL)
+            tf_ofd.add(temp_fname, arcname=fname)
+        tf_ofd.close()
     return None
 
 def run_asr(env, root_path, vocabulary, pronunciations, language_model, *args, **kw):
@@ -526,11 +397,12 @@ def run_asr(env, root_path, vocabulary, pronunciations, language_model, *args, *
         dnet = env.ASRConstruct("${ROOT_PATH}/dnet.bin.gz", [vocabulary, pronunciations, language_model], PACK=env["PACK"], BABEL_ID=env["BABEL_ID"])    
         tests = [dnet]
         if env["TEST_ASR"]:
-            to = 1
+            to = 2
         else:
             to = env["ASR_JOB_COUNT"]
         for i in range(to):
-            tests.append(env.ASRTest(["${ROOT_PATH}/ctm/${JOB_ID}.ctm", "${ROOT_PATH}/lattice_list_${JOB_ID}.txt"],
+            tests.append(env.ASRTest(["${ROOT_PATH}/transcripts_${JOB_ID + 1}_of_${ASR_JOB_COUNT}.ctm.gz",
+                                      "${ROOT_PATH}/confusion_networks_${JOB_ID + 1}_of_${ASR_JOB_COUNT}.tgz"],
                                      [dnet, vocabulary, pronunciations, language_model], PACK=env["PACK"], BABEL_ID=env["BABEL_ID"], JOB_ID=i))
     else:
         existing = [re.match(r"^lattice_list_(\d+).txt$", os.path.basename(x.rstr())).group(1) for x in env.Glob("${ROOT_PATH}/lattice_list_[0-9]*.txt")]        

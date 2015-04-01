@@ -43,11 +43,13 @@ vars.AddVariables(
     ("PRINT_WORDS_THRESH", "", "1e-10"),
     ("PRINT_EPS_THRESH", "", "1e-03"),
     ("PRUNE", "", 10),
+    ("RESCORE_BEAM", "", 1.5),
     
     # these variables determine what experiments are performed
     ("LANGUAGES", "", {}),
     ("RUN_ASR", "", True),
     ("RUN_KWS", "", True),
+    ("PROCESS_PACK", "", None),
     
     # py-cfg parameters
     ("NUM_SAMPLES", "", 1),
@@ -238,7 +240,8 @@ for language, properties in env["LANGUAGES"].iteritems():
     # env.NormalizeMorfessorOutput("work/morphology/morfessor/${LANGUAGE_NAME}_ALP_eval_keywords.txt", segs)
     
     for pack, data in packs.iteritems():
-
+        if env.get("PROCESS_PACK", pack) != pack:
+            continue
         env.Replace(PACK=pack)
         baseline_vocabulary = env.File("${VOCABULARY_FILE}")
         
