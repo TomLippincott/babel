@@ -245,13 +245,13 @@ for language, properties in env["LANGUAGES"].iteritems():
         env.Replace(PACK=pack)
         baseline_vocabulary = env.File("${VOCABULARY_FILE}")
         
-        # temp_segs, models = env.TrainMorfessor(["work/morfessor_models/${LANGUAGE_NAME}_${PACK}.txt",
-        #                                         "work/morfessor_models/${LANGUAGE_NAME}_${PACK}.model"], env.Glob("syl/babel${BABEL_ID}.${PACK}*bz2")[0])
-        # dev_kw_segs = env.ApplyMorfessor("work/morfessor_segmentations/${LANGUAGE_NAME}_${PACK}_dev_keywords.txt",
-        #                                  [models, dev_keyword_file])
-        # unseg = env.Unsegment("work/unsegmented/${LANGUAGE_NAME}_${PACK}_unseg.txt", temp_segs)
-        # segs = env.ApplyMorfessor("work/morfessor_segmentations/${LANGUAGE_NAME}_${PACK}.txt",
-        #                           [models, unseg])
+        temp_segs, models = env.TrainMorfessor(["work/morfessor_models/${LANGUAGE_NAME}_${PACK}.txt",
+                                                "work/morfessor_models/${LANGUAGE_NAME}_${PACK}.model"], env.Glob("syl/babel${BABEL_ID}.${PACK}*bz2")[0])
+        dev_kw_segs = env.ApplyMorfessor("work/morfessor_segmentations/${LANGUAGE_NAME}_${PACK}_dev_keywords.txt",
+                                         [models, dev_keyword_file])
+        unseg = env.Unsegment("work/unsegmented/${LANGUAGE_NAME}_${PACK}_unseg.txt", temp_segs)
+        segs = env.ApplyMorfessor("work/morfessor_segmentations/${LANGUAGE_NAME}_${PACK}.txt",
+                                   [models, unseg])
         # env.NormalizeMorfessorOutput("work/morphology/morfessor/${LANGUAGE_NAME}_${PACK}.txt", segs)
         # env.NormalizeMorfessorOutput("work/morphology/morfessor/${LANGUAGE_NAME}_${PACK}_dev_keywords.txt", dev_kw_segs)
         #eval_kw_segs = env.ApplyMorfessor("work/morfessor_segmentations/${LANGUAGE_NAME}_${PACK}_eval_keywords.txt",
@@ -299,7 +299,7 @@ for language, properties in env["LANGUAGES"].iteritems():
             env.Replace(ACOUSTIC_WEIGHT=properties.get("ACOUSTIC_WEIGHT", .09))
             baseline_asr_output = env.RunASR("work/asr_experiments/${LANGUAGE_NAME}/${PACK}/baseline", baseline_vocabulary, baseline_pronunciations, baseline_language_model)
             baseline_kws_output = env.RunKWS("work/kws_experiments/${LANGUAGE_NAME}/${PACK}/baseline", baseline_asr_output[1:], baseline_vocabulary, baseline_pronunciations, dev_keyword_file)
-            continue
+
             segmented_pronunciations_training, morphs = env.SegmentedPronunciations(["work/pronunciations/${LANGUAGE_NAME}_${PACK}_morfessor_segmented.txt",
                                                                                      "work/pronunciations/${LANGUAGE_NAME}_${PACK}_morfessor_morphs.txt"],
                                                                                     [baseline_pronunciations, segs])
@@ -318,7 +318,7 @@ for language, properties in env["LANGUAGES"].iteritems():
                                                               [segmented_training_text, Value(2)])
 
             morfessor_asr_output = env.RunASR("work/asr_experiments/${LANGUAGE_NAME}/${PACK}/morfessor", segmented_vocabulary, segmented_pronunciations, segmented_language_model)
-            morfessor_kws_output = env.RunKWS("work/kws_experiments/${LANGUAGE_NAME}/${PACK}/morfessor", morfessor_asr_output[1:], segmented_vocabulary, segmented_pronunciations, dev_keyword_file)
+            #morfessor_kws_output = env.RunKWS("work/kws_experiments/${LANGUAGE_NAME}/${PACK}/morfessor", morfessor_asr_output[1:], segmented_vocabulary, segmented_pronunciations, dev_keyword_file)
             # training_vocabulary_file = env.TextToVocabulary("work/vocabularies/${LANGUAGE_NAME}/training.txt.gz",
     #                                                 training_text)
 
