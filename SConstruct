@@ -22,6 +22,7 @@ import asr_tools
 import kws_tools
 import vocabulary_tools
 import g2p_tools
+import openfst_tools
 from scons_tools import make_threaded_builder
 from torque_tools import make_torque_builder
 import scons_tools
@@ -49,6 +50,7 @@ vars.AddVariables(
     ("LANGUAGES", "", {}),
     ("RUN_ASR", "", True),
     ("RUN_KWS", "", True),
+    ("RUN_SEGMENTATION", "", True),
     ("PROCESS_PACK", "", None),
     
     # py-cfg parameters
@@ -112,7 +114,7 @@ vars.AddVariables(
     ("BUILDPADFST", "", "${BABEL_BIN_PATH}/buildpadfst"),
     ("MAKE_INDEX", "", "${LORELEI_SVN}/tools/cn-kws/scripts/make_index.pl"),
     ("LAT2IDX", "", "${BABEL_BIN_PATH}/lat2idx"),
-    ("FSTCOMPILE", "", "${OVERLAY}/bin/fstcompile"),
+    ("OPENFST_BINARIES", "", "${OVERLAY}/bin"),
     ("QUERY2PHONEFST", "", "${BABEL_BIN_PATH}/query2phonefst"),
     ("STDSEARCH", "", "${BABEL_BIN_PATH}/stdsearch"),
     ("MERGESEARCHFROMPARINDEXPRL", "", "${BABEL_SCRIPT_PATH}/mergeSearchFromParIndex.prl"),
@@ -170,6 +172,7 @@ env = Environment(variables=vars, ENV=os.environ, TARFLAGS="-c -z", TARSUFFIX=".
                   tools=["default", "textfile"] + [x.TOOLS_ADD for x in [babel_tools, evaluation_tools, scala_tools, morfessor_tools, emma_tools, 
                                                                          trmorph_tools, sfst_tools, mila_tools, almor_tools, pycfg_tools,
                                                                          asr_tools, kws_tools, vocabulary_tools, g2p_tools, scons_tools,
+                                                                         openfst_tools,
                                                                      ]],
                   )
 
@@ -197,6 +200,7 @@ def print_cmd_line(s, target, source, env):
 env['PRINT_CMD_LINE_FUNC'] = print_cmd_line
 env.Decider("timestamp-newer")
 
+model_names = ["prefix_suffix"]
 all_texts = []
 
 for language, properties in env["LANGUAGES"].iteritems():
@@ -204,7 +208,7 @@ for language, properties in env["LANGUAGES"].iteritems():
     env.Replace(BABEL_ID=properties["BABEL_ID"])
     env.Replace(LANGUAGE_NAME=language)
     env.Replace(LOCALE=properties.get("LOCALE"))
-
+    
     packs = {}
     if "FLP" in properties.get("PACKS", []):
         packs["FLP"] = env.CollectText("work/texts/${LANGUAGE_NAME}_FLP.txt",
@@ -222,7 +226,7 @@ for language, properties in env["LANGUAGES"].iteritems():
     all_texts += packs.values()
     
     dev_keyword_file = env.Glob(env.subst("${DEV_KEYWORD_FILE}"))[0]
-    dev_keyword_text_file = env.KeywordXMLToText("work/ag_input/${LANGUAGE_NAME}_keywords.txt", dev_keyword_file)
+    dev_keyword_text_file = env.KeywordXMLToText("work/adaptor_grammar/${LANGUAGE_NAME}_dev_keywords.txt", dev_keyword_file)
     # eval_keyword_file = env.Glob("data/eval_keyword_lists/IARPA-babel${BABEL_ID}*eval.kwlist*.xml")
 
     # alp_vocab = env.File("data/op2/${BABEL_ID}/ALP/morphology/vocab")
@@ -242,16 +246,20 @@ for language, properties in env["LANGUAGES"].iteritems():
     for pack, data in packs.iteritems():
         if env.get("PROCESS_PACK", pack) != pack:
             continue
-        env.Replace(PACK=pack)
+        env.Replace(PACK=pack)        
         baseline_vocabulary = env.File("${VOCABULARY_FILE}")
-        
-        temp_segs, models = env.TrainMorfessor(["work/morfessor_models/${LANGUAGE_NAME}_${PACK}.txt",
-                                                "work/morfessor_models/${LANGUAGE_NAME}_${PACK}.model"], env.Glob("syl/babel${BABEL_ID}.${PACK}*bz2")[0])
-        dev_kw_segs = env.ApplyMorfessor("work/morfessor_segmentations/${LANGUAGE_NAME}_${PACK}_dev_keywords.txt",
-                                         [models, dev_keyword_file])
-        unseg = env.Unsegment("work/unsegmented/${LANGUAGE_NAME}_${PACK}_unseg.txt", temp_segs)
-        segs = env.ApplyMorfessor("work/morfessor_segmentations/${LANGUAGE_NAME}_${PACK}.txt",
-                                   [models, unseg])
+        baseline_pronunciations = env.File("${PRONUNCIATIONS_FILE}")
+        segmentations = {}
+        if env.get("RUN_SEGMENTATION", True):
+            env.Replace(MODEL="morfessor")
+            temp_segs, models = env.TrainMorfessor(["work/morfessor/${LANGUAGE_NAME}_${PACK}.txt",
+                                                    "work/morfessor/${LANGUAGE_NAME}_${PACK}.model"], env.Glob("syl/babel${BABEL_ID}.${PACK}*bz2")[0])
+            dev_kw_segs = env.ApplyMorfessor("work/segmentations/${LANGUAGE_NAME}_${PACK}_${MODEL}_dev_keywords.txt",
+                                             [models, dev_keyword_file])
+            unseg = env.Unsegment("work/morfessor/${LANGUAGE_NAME}_${PACK}_unseg.txt", temp_segs)
+            vocab = env.ApplyMorfessor("work/segmentations/${LANGUAGE_NAME}_${PACK}_${MODEL}_vocabulary.txt",
+                                       [models, unseg])
+            segmentations["morfessor"] = (vocab, dev_kw_segs)
         # env.NormalizeMorfessorOutput("work/morphology/morfessor/${LANGUAGE_NAME}_${PACK}.txt", segs)
         # env.NormalizeMorfessorOutput("work/morphology/morfessor/${LANGUAGE_NAME}_${PACK}_dev_keywords.txt", dev_kw_segs)
         #eval_kw_segs = env.ApplyMorfessor("work/morfessor_segmentations/${LANGUAGE_NAME}_${PACK}_eval_keywords.txt",
@@ -272,53 +280,67 @@ for language, properties in env["LANGUAGES"].iteritems():
         #    env.NormalizeMorfessorOutput("work/morphology/morfessor/${LANGUAGE_NAME}_${PACK}_eval_keywords.txt", kw_segs)
 
 
-        if pack in ["LLP", "VLLP", "FLP"] and False:
-            characters = env.CharacterProductions("work/character_productions/${LANGUAGE_NAME}_${PACK}.txt", [data, dev_keyword_text_file])
-            pycfg_data = env.MorphologyData("work/ag_input/${LANGUAGE_NAME}_${PACK}_data.txt", [data, Value(properties.get("LOWER_CASE", True))])
-            for model in ["prefix_suffix"]: #, "prefix", "suffix"]: #, "agglutinative"]:
+        #if pack in ["LLP", "VLLP", "FLP"] and False:
+        #if env.get("RUN_SEGMENTATIONS"
+            characters = env.CharacterProductions("work/adaptor_grammar/${LANGUAGE_NAME}_${PACK}_characters.txt", [data, dev_keyword_text_file])
+            pycfg_data = env.MorphologyData("work/adaptor_grammar/${LANGUAGE_NAME}_${PACK}_data.txt", [data, Value(properties.get("LOWER_CASE", True))])
+            for model in model_names:
                 env.Replace(MODEL=model)
-                cfg = env.ComposeGrammars("work/ag_morphology/${LANGUAGE_NAME}/${MODEL}/${PACK}_cfg.txt",
+                cfg = env.ComposeGrammars("work/adaptor_grammar/${LANGUAGE_NAME}_${PACK}_${MODEL}_cfg.txt",
                                           ["data/grammar_templates/simple_${MODEL}.txt", characters])
-                pycfg = env.RunPYCFG(["work/ag_morphology/${LANGUAGE_NAME}_${MODEL}_${PACK}_output.txt",
-                                      "work/ag_morphology/${LANGUAGE_NAME}_${MODEL}_${PACK}_grammar.txt",
-                                      "work/ag_morphology/${LANGUAGE_NAME}_${MODEL}_${PACK}_trace.txt",
-                                      "work/ag_morphology/${LANGUAGE_NAME}_${MODEL}_${PACK}_keyword_output.txt"],                                  
+                pycfg = env.RunPYCFG(["work/adaptor_grammar/${LANGUAGE_NAME}_${PACK}_${MODEL}_output.txt",
+                                      "work/adaptor_grammar/${LANGUAGE_NAME}_${PACK}_${MODEL}_grammar.txt",
+                                      "work/adaptor_grammar/${LANGUAGE_NAME}_${PACK}_${MODEL}_trace.txt",
+                                      "work/adaptor_grammar/${LANGUAGE_NAME}_${PACK}_${MODEL}_keyword_output.txt"],                                  
                                       [cfg, pycfg_data, dev_keyword_text_file])
 
-                env.NormalizePYCFGOutput("work/segmentations/simple_adaptor_grammar/${LANGUAGE_NAME}_${PACK}_dev.txt", pycfg[0])
-                env.NormalizePYCFGOutput("work/segmentations/simple_adaptor_grammar/${LANGUAGE_NAME}_${PACK}_dev_keywords.txt", pycfg[-1])
+                vocab = env.NormalizePYCFGOutput("work/segmentations/${LANGUAGE_NAME}_${PACK}_${MODEL}_vocabulary.txt", pycfg[0])
+                kw = env.NormalizePYCFGOutput("work/segmentations/${LANGUAGE_NAME}_${PACK}_${MODEL}_dev_keywords.txt", pycfg[-1])
+                segmentations[model] = (vocab, kw)
+        else:
+            #segmentations["morfessor"] = (env.File("work/morfessor_segmentations/${LANGUAGE_NAME}_${PACK}.txt"),
+            #                              env.File("work/morfessor_segmentations/${LANGUAGE_NAME}_${PACK}_dev_keywords.txt"))
+            for model in ["morfessor"] + model_names:
+                env.Replace(MODEL=model)
+                vocab = env.File("work/segmentations/${LANGUAGE_NAME}_${PACK}_${MODEL}_vocabulary.txt")
+                kw = env.File("work/segmentations/${LANGUAGE_NAME}_${PACK}_${MODEL}_dev_keywords.txt")
+                segmentations[model] = (vocab, kw)
+
+
         if os.path.exists(pjoin(env.subst("${IBM_MODELS}/${BABEL_ID}/${PACK}"))):
 
-            baseline_vocabulary = env.File("${VOCABULARY_FILE}")
-            baseline_pronunciations = env.File("${PRONUNCIATIONS_FILE}")
+            #baseline_vocabulary = env.File("${VOCABULARY_FILE}")
+
 
             #baseline_vocabulary = env.File("${IBM_MODELS}/${BABEL_ID}/${PACK}/models/vocab")
             #baseline_pronunciations = env.File("${IBM_MODELS}/${BABEL_ID}/${PACK}/models/dict.test")
             #baseline_language_model = env.TrainLanguageModel("work/language_models/${LANGUAGE_NAME}_${PACK}_baseline.arpabo.gz", [data, env.Value(2)])
             baseline_language_model = env.Glob("${IBM_MODELS}/${BABEL_ID}/${PACK}/models/*.arpabo.gz")[0]
             env.Replace(ACOUSTIC_WEIGHT=properties.get("ACOUSTIC_WEIGHT", .09))
-            baseline_asr_output = env.RunASR("work/asr_experiments/${LANGUAGE_NAME}/${PACK}/baseline", baseline_vocabulary, baseline_pronunciations, baseline_language_model)
-            baseline_kws_output = env.RunKWS("work/kws_experiments/${LANGUAGE_NAME}/${PACK}/baseline", baseline_asr_output[1:], baseline_vocabulary, baseline_pronunciations, dev_keyword_file)
+            #baseline_asr_output = env.RunASR("work/asr_experiments/${LANGUAGE_NAME}/${PACK}/baseline", baseline_vocabulary, baseline_pronunciations, baseline_language_model)
+            #baseline_kws_output = env.RunKWS("work/kws_experiments/${LANGUAGE_NAME}/${PACK}/baseline", [x[1] for x in baseline_asr_output[1:]], baseline_vocabulary, baseline_pronunciations, dev_keyword_file)
 
-            segmented_pronunciations_training, morphs = env.SegmentedPronunciations(["work/pronunciations/${LANGUAGE_NAME}_${PACK}_morfessor_segmented.txt",
-                                                                                     "work/pronunciations/${LANGUAGE_NAME}_${PACK}_morfessor_morphs.txt"],
-                                                                                    [baseline_pronunciations, segs])
-            if properties.get("GRAPHEMIC", False):
-                morph_pronunciations = env.GraphemicPronunciations("work/pronunciations/${LANGUAGE_NAME}_${PACK}_morfessor_morph_pronunciations.txt", morphs)
-            else:
-                g2p_segmented_model = env.TrainG2P("work/pronunciations/${LANGUAGE_NAME}_${PACK}_morfessor_segmented_model_1.txt", segmented_pronunciations_training)        
-                morph_pronunciations = env.ApplyG2P("work/pronunciations/${LANGUAGE_NAME}_${PACK}_morfessor_morph_pronunciations.txt", [g2p_segmented_model, morphs])
+            for model_name, segmentation in segmentations.iteritems():
+                env.Replace(MODEL=model_name)
+                segmented_pronunciations_training, morphs = env.SegmentedPronunciations(["work/pronunciations/${LANGUAGE_NAME}_${PACK}_${MODEL}_segmented.txt",
+                                                                                         "work/pronunciations/${LANGUAGE_NAME}_${PACK}_${MODEL}_morphs.txt"],
+                                                                                        [baseline_pronunciations, segmentation])
+                if properties.get("GRAPHEMIC", False):
+                    morph_pronunciations = env.GraphemicPronunciations("work/pronunciations/${LANGUAGE_NAME}_${PACK}_${MODEL}_morph_pronunciations.txt", morphs)
+                else:
+                    g2p_segmented_model = env.TrainG2P("work/pronunciations/${LANGUAGE_NAME}_${PACK}_${MODEL}_segmented_model_1.txt", segmented_pronunciations_training)
+                    morph_pronunciations = env.ApplyG2P("work/pronunciations/${LANGUAGE_NAME}_${PACK}_${MODEL}_morph_pronunciations.txt", [g2p_segmented_model, morphs])
                 
-            segmented_vocabulary, segmented_pronunciations = env.PronunciationsToVocabDict(
-                ["work/asr_input/${LANGUAGE_NAME}_${PACK}_morfessor_vocabulary.txt", "work/asr_input/${LANGUAGE_NAME}_${PACK}_morfessor_pronunciations.txt"],
-                [morph_pronunciations, baseline_pronunciations, env.Value(properties.get("GRAPHEMIC", False))])
+                segmented_vocabulary, segmented_pronunciations = env.PronunciationsToVocabDict(
+                    ["work/asr_input/${LANGUAGE_NAME}_${PACK}_${MODEL}_vocabulary.txt", "work/asr_input/${LANGUAGE_NAME}_${PACK}_${MODEL}_pronunciations.txt"],
+                    [morph_pronunciations, baseline_pronunciations, env.Value(properties.get("GRAPHEMIC", False))])
 
-            segmented_training_text = env.SegmentTranscripts("work/segmented_training/${LANGUAGE_NAME}_${PACK}.txt", [data, segs])
-            segmented_language_model = env.TrainLanguageModel("work/asr_input/${LANGUAGE_NAME}_${PACK}_languagemodel_segmented.arpabo.gz",
-                                                              [segmented_training_text, Value(2)])
+                segmented_training_text = env.SegmentTranscripts("work/segmented_training/${LANGUAGE_NAME}_${PACK}_${MODEL}.txt", [data, segmentation])
+                segmented_language_model = env.TrainLanguageModel("work/asr_input/${LANGUAGE_NAME}_${PACK}_${MODEL}_languagemodel_segmented.arpabo.gz",
+                                                                  [segmented_training_text, Value(2)])
 
-            morfessor_asr_output = env.RunASR("work/asr_experiments/${LANGUAGE_NAME}/${PACK}/morfessor", segmented_vocabulary, segmented_pronunciations, segmented_language_model)
-            #morfessor_kws_output = env.RunKWS("work/kws_experiments/${LANGUAGE_NAME}/${PACK}/morfessor", morfessor_asr_output[1:], segmented_vocabulary, segmented_pronunciations, dev_keyword_file)
+            #morfessor_asr_output = env.RunASR("work/asr_experiments/${LANGUAGE_NAME}/${PACK}/morfessor", segmented_vocabulary, segmented_pronunciations, segmented_language_model)
+            #morfessor_kws_output = env.RunKWS("work/kws_experiments/${LANGUAGE_NAME}/${PACK}/morfessor", [x[1] for x in morfessor_asr_output[1:]], segmented_vocabulary, segmented_pronunciations, dev_keyword_file)
             # training_vocabulary_file = env.TextToVocabulary("work/vocabularies/${LANGUAGE_NAME}/training.txt.gz",
     #                                                 training_text)
 
@@ -421,4 +443,4 @@ for language, properties in env["LANGUAGES"].iteritems():
 #             results.append(env.RunEMMA([guess, gold, Value({"LANGUAGE" : "$LANGUAGE", "MODEL" : "MORFESSOR", "RUN" : str(run)})]))
         
 # env.CollateResults("work/results.txt", results)
-env.VocabularyComparison("work/vocabulary_comparison.txt", all_texts)
+#env.VocabularyComparison("work/vocabulary_comparison.txt", all_texts)

@@ -362,11 +362,11 @@ def asr_test(target, source, env):
             if writeLat:
                 
                 #fname = os.path.abspath(os.path.join(cfg.latDir,"%s.fsm.gz" % utt))
-                fname = "%s.fsm.gz" % (utt)
+                fname = "%s.fsm" % (utt)
                 #lattice_list_ofd.write("%s\n" % (fname))
                 se.lat.write(temp_fname, db.getFrom(utt))
             elif writeCons:
-                fname = "%s.cons.gz" % (utt)
+                fname = "%s.cons" % (utt)
                 #fname = os.path.abspath(os.path.join(cfg.latDir, "%s.cons.gz" % utt))
                 #rescoreBeam = 2.0
                 #se.rescore(rescoreBeam)
@@ -397,7 +397,7 @@ def run_asr(env, root_path, vocabulary, pronunciations, language_model, *args, *
         dnet = env.ASRConstruct("${ROOT_PATH}/dnet.bin.gz", [vocabulary, pronunciations, language_model], PACK=env["PACK"], BABEL_ID=env["BABEL_ID"])    
         tests = [dnet]
         if env["TEST_ASR"]:
-            to = 2
+            to = 1
         else:
             to = env["ASR_JOB_COUNT"]
         for i in range(to):
@@ -405,8 +405,7 @@ def run_asr(env, root_path, vocabulary, pronunciations, language_model, *args, *
                                       "${ROOT_PATH}/confusion_networks_${JOB_ID + 1}_of_${ASR_JOB_COUNT}.tgz"],
                                      [dnet, vocabulary, pronunciations, language_model], PACK=env["PACK"], BABEL_ID=env["BABEL_ID"], JOB_ID=i))
     else:
-        existing = [re.match(r"^lattice_list_(\d+).txt$", os.path.basename(x.rstr())).group(1) for x in env.Glob("${ROOT_PATH}/lattice_list_[0-9]*.txt")]        
-        tests = [None] + [[env.File("${ROOT_PATH}/ctm/%s.ctm" % n), env.File("${ROOT_PATH}/lattice_list_%s.txt" % n)] for n in existing]
+        return [None] + [[None, x] for x in env.Glob("${ROOT_PATH}/*_[0-9]*_of_[0-9]*.tgz")]
     return tests
 
 def TOOLS_ADD(env):
