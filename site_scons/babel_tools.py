@@ -866,7 +866,16 @@ def prepare_segmentations_for_release(target, source, env):
                     return "%s, %s, %s" % (seg_file, word_file, word)
                     
         with meta_open(out.rstr(), "w") as ofd:
-            ofd.write("\n".join(["%s\t%s" % (w, " ".join(ms)) for w, ms in morphs.iteritems()]) + "\n")
+            with meta_open(word_file.rstr()) as ifd:
+                for line in ifd:
+                    line = line.strip()
+                    if line.startswith("-") or line.endswith("-") or "<" in line or "_" in line:
+                        ofd.write("%s\t%s\n" % (line, line))
+                    else:
+                        words = sum([x.split("-") for x in line.split()], [])                    
+                        ofd.write("%s\t%s\n" % (line, " ".join(sum([morphs.get(w, w) for w in words], []))))
+                    pass
+                #ofd.write("\n".join(["%s\t%s" % (w, " ".join(ms)) for w, ms in morphs.iteritems()]) + "\n")
 
                 # ms = []
 
