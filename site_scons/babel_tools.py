@@ -860,21 +860,26 @@ def prepare_segmentations_for_release(target, source, env):
             morphs = {"".join([x.strip("+") for x in ms]) : ms for ms in data}
         with meta_open(word_file.rstr()) as ifd:
             lines = [l.strip().split() for l in ifd if "_" not in l]
+            
         for words in lines:
             for word in sum([x.split("-") for x in words], []):
-                if word not in morphs and "_" not in word and "<" not in word:
+                if word != "" and word not in morphs and "_" not in word and "<" not in word and not re.match(r"^\d+$", word):
                     return "%s, %s, %s" % (seg_file, word_file, word)
                     
         with meta_open(out.rstr(), "w") as ofd:
-            with meta_open(word_file.rstr()) as ifd:
-                for line in ifd:
-                    line = line.strip()
-                    if line.startswith("-") or line.endswith("-") or "<" in line or "_" in line:
-                        ofd.write("%s\t%s\n" % (line, line))
-                    else:
-                        words = sum([x.split("-") for x in line.split()], [])                    
-                        ofd.write("%s\t%s\n" % (line, " ".join(sum([morphs.get(w, w) for w in words], []))))
-                    pass
+            for morph, seg in sorted(morphs.iteritems()):
+                ofd.write("%s\t%s\n" % (morph, " ".join(seg)))
+            
+            # with meta_open(word_file.rstr()) as ifd:
+            #     for line in ifd:
+            #         line = line.strip()
+            #         if line.startswith("-") or line.endswith("-") or "<" in line or "_" in line:
+            #             pass
+            #         #    ofd.write("%s\t%s\n" % (line, line))
+            #         else:
+            #             words = sum([x.split("-") for x in line.split()], [])                    
+            #             ofd.write("%s\t%s\n" % (line, " ".join(sum([morphs.get(w, w) for w in words], []))))
+            #         pass
                 #ofd.write("\n".join(["%s\t%s" % (w, " ".join(ms)) for w, ms in morphs.iteritems()]) + "\n")
 
                 # ms = []
@@ -888,55 +893,74 @@ def prepare_segmentations_for_release(target, source, env):
                 # ofd.write("%s\t%s\n" % (" ".join(words), " ".join(ms)))
     return None
 
-def morfessor_babel_experiment(env, target_base, training, non_acoustic, dev_keywords=None, eval_keywords=None):
+def morfessor_babel_experiment(env, target_base, non_acoustic, training_name, word_lists=[]):
+    word_lists = Flatten(word_lists)
     if env.get("RUN_SEGMENTATION", True):
-        temp_segs, model = env.TrainMorfessor(["work/morfessor/%s.txt" % (target_base),
-                                               "work/morfessor/%s.model" % (target_base)], training, NON_ACOUSTIC_GRAPHEMES=non_acoustic)
-        segmented = [temp_segs]
-        if dev_keywords:
-            dev_kw_segs = env.ApplyMorfessor("work/morfessor/%s_dev_keywords.txt" % (target_base),
-                                             [model, dev_keywords])
-            segmented.append(dev_kw_segs)
-        if eval_keywords:
-            eval_kw_segs = env.ApplyMorfessor("work/morfessor/%s_eval_keywords.txt" % (target_base),
-                                              [model, eval_keywords])
-            segmented.append(eval_kw_segs)
-    return segmented
+        env.Replace(TRAINING_NAME=word_lists[0])
+        training_segmentations, model = env.TrainMorfessor(["work/morfessor/${SOURCE.filebase}_segmented.txt",
+                                                            "work/morfessor/${SOURCE.filebase}.model"], word_lists[0], NON_ACOUSTIC_GRAPHEMES=non_acoustic)
 
-def adaptor_grammar_babel_experiment(env, target_base, model, training, non_acoustic, dev_keywords=None, eval_keywords=None):
-    if env.get("RUN_SEGMENTATION", True):
+        env.PrepareSegmentationsForRelease("work/segmentations/${SOURCES[1].filebase}+${SOURCES[1].filebase}+morfessor.txt",
+                                           [training_segmentations, word_lists[0]],
+                                           NON_ACOUSTIC_GRAPHEMES=non_acoustic)
+        for word_list in word_lists[1:]:
+            segmentations = env.ApplyMorfessor("work/morfessor/%s+${SOURCES[1].filebase}+morfessor.txt" % (os.path.splitext(os.path.basename(word_lists[0].rstr()))[0]),
+                                               [model, word_list])
+            env.PrepareSegmentationsForRelease("work/segmentations/%s+${SOURCES[1].filebase}+morfessor.txt" % (os.path.splitext(os.path.basename(word_lists[0].rstr()))[0]),
+                                               [segmentations, word_list],
+                                               NON_ACOUSTIC_GRAPHEMES=non_acoustic)
+    return None
+
+def adaptor_grammar_babel_experiment(env, target_base, model_name, non_acoustic, word_lists=[]):
+    with meta_open(word_lists[0].rstr()) as ifd:
+        count = len([x for x in ifd])
+    segmented = []
+    if env.get("RUN_SEGMENTATION", True) and count < 20000:
         env.Replace(TARGET_BASE=target_base)
-        env.Replace(MODEL=model)
-        characters = env.CharacterProductions("work/adaptor_grammar/${TARGET_BASE}_characters.txt", [training, dev_keywords, eval_keywords],
+        env.Replace(MODEL_NAME=model_name)
+        training_words = word_lists[0]
+        characters = env.CharacterProductions("work/adaptor_grammar/${TRAINING_NAME}_${MODEL_NAME}_characters.txt", word_lists,
                                               NON_ACOUSTIC_GRAPHEMES=non_acoustic)
-        pycfg_data = env.MorphologyData("work/adaptor_grammar/${TARGET_BASE}_data.txt", training, NON_ACOUSTIC_GRAPHEMES=non_acoustic)
-        dev_keyword_data = env.MorphologyData("work/adaptor_grammar/${TARGET_BASE}_dev_keyword_data.txt", dev_keywords, NON_ACOUSTIC_GRAPHEMES=non_acoustic)
-        eval_keyword_data = env.MorphologyData("work/adaptor_grammar/${TARGET_BASE}_eval_keyword_data.txt", eval_keywords, NON_ACOUSTIC_GRAPHEMES=non_acoustic)
-        cfg = env.ComposeGrammars("work/adaptor_grammar/${TARGET_BASE}_cfg.txt", ["data/grammar_templates/simple_${MODEL}.txt", characters])
-        pycfg = env.RunPYCFG(["work/adaptor_grammar/${TARGET_BASE}_${MODEL}_output.txt",
-                              "work/adaptor_grammar/${TARGET_BASE}_${MODEL}_grammar.txt",
-                              "work/adaptor_grammar/${TARGET_BASE}_${MODEL}_trace.txt",
-                              "work/adaptor_grammar/${TARGET_BASE}_${MODEL}_dev_keyword_output.txt",
-                              "work/adaptor_grammar/${TARGET_BASE}_${MODEL}_eval_keyword_output.txt"],                                  
-                             [cfg, pycfg_data, dev_keyword_data, eval_keyword_data])
-        vocab = env.NormalizePYCFGOutput("work/adaptor_grammar/${TARGET_BASE}_${MODEL}_vocabulary.txt", pycfg[0])
-        dev_kw = env.NormalizePYCFGOutput("work/adaptor_grammar/${TARGET_BASE}_${MODEL}_dev_keywords.txt", pycfg[-2])
-        eval_kw = env.NormalizePYCFGOutput("work/adaptor_grammar/${TARGET_BASE}_${MODEL}_eval_keywords.txt", pycfg[-1])
-        segmented = [vocab, dev_kw, eval_kw]
+        pycfg_data = env.MorphologyData("work/adaptor_grammar/${TRAINING_NAME}_${MODEL_NAME}_data.txt", training_words, NON_ACOUSTIC_GRAPHEMES=non_acoustic)
+        cfg = env.ComposeGrammars("work/adaptor_grammar/${TRAINING_NAME}_${MODEL_NAME}_cfg.txt", ["data/grammar_templates/simple_${MODEL_NAME}.txt", characters])
+        segmentations, grammar, trace = env.RunPYCFG(["work/adaptor_grammar/${TRAINING_NAME}_${MODEL_NAME}_output.txt",
+                                                      "work/adaptor_grammar/${TRAINING_NAME}_${MODEL_NAME}_grammar.txt",
+                                                      "work/adaptor_grammar/${TRAINING_NAME}_${MODEL_NAME}_trace.txt",
+                                                  ],
+                                                     [cfg, pycfg_data])
+        training_segmentations = env.NormalizePYCFGOutput("work/adaptor_grammar/${TRAINING_NAME}_${MODEL_NAME}.txt", segmentations)
+        return None
+        segmented = [training_segmentations]
+        for keyword_list in Flatten(word_lists[1:]):
+            kw_data = env.MorphologyData("${SOURCE.base}_${TRAINING_NAME}_${MODEL_NAME}.txt", keyword_list, NON_ACOUSTIC_GRAPHEMES=non_acoustic)
+            segmented.append(env.ApplyAdaptorGrammar("${SOURCES[1].base}_${TRAINING_NAME}_${MODEL_NAME}_segmented.txt", [grammar, kw_data[0]]))
+            
     return segmented
 
 def clean_words(target, source, env):
-    words = set()
+    words = {}
     with meta_open(source[0].rstr()) as ifd:
         for line in [x.strip() for x in ifd]:
-            if not line.startswith("-") or line.endswith("-") and not any([c in line for c in ["<", "_"]]):
-                for word in line.split("-"):
+            toks = line.split()
+            if len(toks) == 2:
+                count = int(toks[1])
+            else:
+                count = None
+            line = toks[0]
+            if not line.startswith("-") or line.endswith("-") and not any([c in line for c in ["<"]]):                
+                if "_" in line:
+                    twords = [x for x in line.split("_") if len(x) > 1]
+                else:
+                    twords = [line]
+                for word in sum([w.split("-") for w in twords], []):
                     if env.get("LOWER_CASE", False):
-                        words.add(word.lower())
+                        word = word.lower()
+                    if count == None:
+                        words[word] = 1
                     else:
-                        words.add(word)
+                        words[word] = words.get(word, 0) + count
     with meta_open(target[0].rstr(), "w") as ofd:
-        ofd.write("\n".join(words))
+        ofd.write("\n".join(["%s %d" % (w, c) for w, c in words.iteritems()]) + "\n")
     return None
 
 

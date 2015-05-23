@@ -202,8 +202,10 @@ def print_cmd_line(s, target, source, env):
 env['PRINT_CMD_LINE_FUNC'] = print_cmd_line
 env.Decider("timestamp-newer")
 
-model_names = ["prefix_suffix"]
+model_names = ["prefix_suffix", "agglutinative"]
 all_texts = []
+
+
 
 for language, properties in env["LANGUAGES"].iteritems():
     
@@ -214,29 +216,39 @@ for language, properties in env["LANGUAGES"].iteritems():
     env.Replace(NON_WORD_PATTERN=".*(_|\<).*")
     env.Replace(FORCE_SPLIT=["-"])
     
-    packs = {}
-    if "FLP" in properties.get("PACKS", []):
-        packs["FLP"] = env.CollectText("work/texts/${LANGUAGE_NAME}_FLP.txt",
-                                       [env.subst("${STRIPPED_LANGUAGE_PACK_PATH}/${BABEL_ID}.tgz"), env.Value(".*transcription.*txt")],
-                                   )
+    # packs = {}
+    # if "FLP" in properties.get("PACKS", []):
+    #     packs["FLP"] = env.CollectText("work/texts/${LANGUAGE_NAME}_FLP.txt",
+    #                                    [env.subst("${STRIPPED_LANGUAGE_PACK_PATH}/${BABEL_ID}.tgz"), env.Value(".*transcription.*txt")],
+    #                                )
 
-    if "LLP" in properties.get("PACKS", []):
-        packs["LLP"] = env.CollectText("work/texts/${LANGUAGE_NAME}_LLP.txt",
-                                       [env.subst("${STRIPPED_LANGUAGE_PACK_PATH}/${BABEL_ID}.tgz"), env.Value(".*sub-train/transcription.*txt")],
-                                   )
+    # if "LLP" in properties.get("PACKS", []):
+    #     packs["LLP"] = env.CollectText("work/texts/${LANGUAGE_NAME}_LLP.txt",
+    #                                    [env.subst("${STRIPPED_LANGUAGE_PACK_PATH}/${BABEL_ID}.tgz"), env.Value(".*sub-train/transcription.*txt")],
+    #                                )
     
-    if "VLLP" in properties.get("PACKS", []):
-        packs["VLLP"] = env.StmToData("work/texts/${LANGUAGE_NAME}_VLLP.txt",
-                                      ["${BASE_PATH}/LPDefs.20141006.tgz", env.Value(env.subst(".*IARPA-babel${BABEL_ID}.*.VLLP.training.transcribed.stm"))])
-    all_texts += packs.values()
+    # if "VLLP" in properties.get("PACKS", []):
+    #     packs["VLLP"] = env.StmToData("work/texts/${LANGUAGE_NAME}_VLLP.txt",
+    #                                   ["${BASE_PATH}/LPDefs.20141006.tgz", env.Value(env.subst(".*IARPA-babel${BABEL_ID}.*.VLLP.training.transcribed.stm"))])
+    # all_texts += packs.values()
     
-    dev_keyword_file = env.Glob(env.subst("${DEV_KEYWORD_FILE}"))[0]
-    dev_keyword_list = env.KeywordsToList("work/keywords/${LANGUAGE_NAME}_dev.txt", dev_keyword_file)
-    dev_keyword_text_file = env.KeywordXMLToText("work/adaptor_grammar/${LANGUAGE_NAME}_dev_keywords.txt", dev_keyword_file)
-    eval_keyword_file = env.Glob(env.subst("${EVAL_KEYWORD_FILE}"))[0]
-    eval_keyword_list = env.KeywordsToList("work/keywords/${LANGUAGE_NAME}_eval.txt", eval_keyword_file)
-        
-    for training_words in env.Glob("data/word_lists/${BABEL_ID}*"):
+    #dev_keyword_file = env.Glob(env.subst("${DEV_KEYWORD_FILE}"))
+    #dev_keyword_list = env.KeywordsToList("work/keywords/${LANGUAGE_NAME}_dev.txt", dev_keyword_file)
+    #dev_keyword_text_file = env.KeywordXMLToText("work/adaptor_grammar/${LANGUAGE_NAME}_dev_keywords.txt", dev_keyword_file)
+    #eval_keyword_file = env.Glob(env.subst("${EVAL_KEYWORD_FILE}"))
+    #eval_keyword_list = env.KeywordsToList("work/keywords/${LANGUAGE_NAME}_eval.txt", eval_keyword_file)
+    keyword_lists = []
+    for kwfile in env.Glob("${INDUSDB_PATH}/IARPA-babel${BABEL_ID}*kwlist*xml") + env.Glob(env.subst("${EVAL_KEYWORD_FILE}")):
+        basename = os.path.splitext(os.path.basename(kwfile.rstr()))[0]
+        keyword_lists.append(env.KeywordsToList("work/keyword_lists/${LANGUAGE_NAME}/%s.txt" % basename, kwfile))
+
+    for model in env.Glob("work/morfessor/*+*model"):
+        for kw in keyword_lists:
+            env.ApplyMorfessor("work/applied/${SOURCES[0].filebase}+${SOURCES[1].filebase}.txt", [model, kw[0]])
+            
+    testing_lists = env.Glob("data/testing_lists/${BABEL_ID}*")
+    
+    for training_words in env.Glob("data/training_lists/${BABEL_ID}*"):
 
         
         target_base = os.path.splitext(training_words.name)[0]
@@ -244,28 +256,28 @@ for language, properties in env["LANGUAGES"].iteritems():
         cleaned_training_words = env.CleanWords("work/word_lists/${TARGET_BASE}.txt", training_words, TARGET_BASE=target_base, LOWER_CASE=True)
 
         
-        segmented_training, segmented_dev_keywords, segmented_eval_keywords = env.MorfessorBabelExperiment(target_base,
-                                                                                                           cleaned_training_words,
-                                                                                                           properties.get("NON_ACOUSTIC_GRAPHEMES", []),
-                                                                                                           dev_keyword_list,
-                                                                                                           eval_keyword_list)
-
-        env.PrepareSegmentationsForRelease(["work/segmentations/%s_%s_morfessor.txt" % (target_base, x) for x in ["training_words", "dev_keywords", "eval_keywords"]],
-                                           [segmented_training, training_words, segmented_dev_keywords, dev_keyword_list, segmented_eval_keywords, eval_keyword_list],
-                                           NON_ACOUSTIC_GRAPHEMES=properties.get("NON_ACOUSTIC_GRAPHEMES", []))
-        for model in model_names:
-            #env.Replace(MODEL=model)
-            segmented_training, segmented_dev_keywords, segmented_eval_keywords = env.AdaptorGrammarBabelExperiment(target_base,
-                                                                                                                    model,
-                                                                                                                    cleaned_training_words,
-                                                                                                                    properties.get("NON_ACOUSTIC_GRAPHEMES", []),
-                                                                                                                    dev_keyword_list,
-                                                                                                                    eval_keyword_list)
+        segmented = env.MorfessorBabelExperiment(target_base,
+                                                 properties.get("NON_ACOUSTIC_GRAPHEMES", []),
+                                                 "web-data",
+                                                 cleaned_training_words + keyword_lists + testing_lists,
+        )
         
-            env.PrepareSegmentationsForRelease(["work/segmentations/%s_%s_%s.txt" % (target_base, x, model) for x in ["training_words", "dev_keywords", "eval_keywords"]],
-                                               [segmented_training, training_words, segmented_dev_keywords, dev_keyword_list, segmented_eval_keywords, eval_keyword_list],
-                                               NON_ACOUSTIC_GRAPHEMES=properties.get("NON_ACOUSTIC_GRAPHEMES", []))
-
+        #env.PrepareSegmentationsForRelease(["work/segmentations/%s_%s_morfessor.txt" % (target_base, x) for x in ["training_words", "dev_keywords", "eval_keywords"]],
+        #                                   [segmented_training, training_words, segmented_dev_keywords, dev_keyword_list, segmented_eval_keywords, eval_keyword_list],
+        #                                   NON_ACOUSTIC_GRAPHEMES=properties.get("NON_ACOUSTIC_GRAPHEMES", []))
+        #for model_name in model_names:            
+        #    segmented = env.AdaptorGrammarBabelExperiment(target_base,
+        #                                                  model_name,
+        #                                                  properties.get("NON_ACOUSTIC_GRAPHEMES", []),
+        #                                                  cleaned_training_words + keyword_lists
+        #    )
+                                                                                                                    #dev_keyword_list,
+                                                                                                                    #eval_keyword_list)
+        
+            #env.PrepareSegmentationsForRelease(["work/segmentations/%s_%s_%s.txt" % (target_base, x, model) for x in ["training_words", "dev_keywords", "eval_keywords"]],
+            #                                   [segmented_training, training_words, segmented_dev_keywords, dev_keyword_list, segmented_eval_keywords, eval_keyword_list],
+            #                                   NON_ACOUSTIC_GRAPHEMES=properties.get("NON_ACOUSTIC_GRAPHEMES", []))
+    continue
     for pack, data in packs.iteritems():
         if pack not in env.get("PROCESS_PACKS", [pack]):
             continue
