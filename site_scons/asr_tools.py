@@ -179,10 +179,10 @@ def asr_construct(target, source, env):
     # based on Zulu LLP
     #
     vocabulary, pronunciations, language_model = source
-    env.Replace(VOCABULARY_FILE=vocabulary, PRONUNCIATIONS_FILE=pronunciations, LANGUAGE_MODEL_FILE=language_model, ACOUSTIC_WEIGHT=.060)    
+    env.Replace(VOCABULARY_FILE=vocabulary, PRONUNCIATIONS_FILE=pronunciations, LANGUAGE_MODEL_FILE=language_model) #, ACOUSTIC_WEIGHT=.060)    
     cfg = CFG(env)
-    if env.subst("${BABEL_ID}") == "201":
-        cfg.treeFile = env.subst("${MODEL_PATH}/tree2")
+    #if env.subst("${BABEL_ID}") == "201":
+    #    cfg.treeFile = env.subst("${MODEL_PATH}/tree2")
     se = dsearch.Decoder(lmType=32)
     se.build(cfg)
     se.dnet.write(target[0].rstr())

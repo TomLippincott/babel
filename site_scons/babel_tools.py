@@ -20,9 +20,10 @@ from os.path import join as pjoin
 from os import listdir
 import tarfile
 from random import randint, shuffle
-from common_tools import DataSet, meta_open, pairs
+from common_tools import DataSet, meta_open, pairs, temp_file
 import time
 import codecs
+from attila import Audio, Decimator
 
 def bad_word(w):
     return (w.startswith("*") and w.endswith("*")) or (w.startswith("<") and w.endswith(">")) or (w.startswith("(") and w.endswith(")"))
@@ -963,9 +964,84 @@ def clean_words(target, source, env):
         ofd.write("\n".join(["%s %d" % (w, c) for w, c in words.iteritems()]) + "\n")
     return None
 
+def collect_text(target, source, env):
+    pattern = re.compile(source[1].read())
+    #discard = re.compile(r"^(\[.*\]|\<.*\>|\(.*\)|\*.*\*)\s*$")
+    discard = re.compile(r"^(\[.*\]|\<.*\>|\(.*\))\s*$")
+    keep = re.compile(r".*\w+.*", re.UNICODE)
+    with tarfile.open(source[0].rstr()) as ifd, meta_open(target[0].rstr(), "w") as ofd:
+        for name in ifd.getnames():
+            if pattern.match(name):
+                if name.endswith("gz"):
+                    stream = gzip.GzipFile(fileobj=ifd.extractfile(name))
+                else:
+                    stream = ifd.extractfile(name)
+                for line in codecs.decode(stream.read(), "utf-8").split("\n"):
+                    if not discard.match(line):
+                        words = [word.strip("*") for word in line.strip().split() if not discard.match(word) and keep.match(word)]
+                        words = set([word for word in words if word != ""])
+                    #words = [word for word in line.strip().split()]
+                        if len(words) > 0:
+                            ofd.write("%s\n" % (" ".join(words)))
+    return None
+    # words = set()
+    # with meta_open(target[0].rstr(), "w") as ofd:
+    #     for dname in source:
+    #         for fname in glob(os.path.join(dname.rstr(), "*.txt")) + glob(os.path.join(dname.rstr(), "*.txt.gz")):
+    #             with meta_open(fname) as ifd:
+    #                 for line in ifd:
+    #                     if not line.startswith("["):
+    #                         toks = []
+    #                         for x in line.lower().split():
+    #                             if x == "<hes>":
+    #                                 toks.append("<HES>")
+    #                             elif not x.startswith("<"):
+    #                                 toks.append(x)
+    #                         for t in toks:
+    #                             words.add(t)
+    #                         if len(toks) > 0:
+    #                             ofd.write("%s </s>\n" % (" ".join(toks)))
+    # with meta_open(target[1].rstr(), "w") as ofd:
+    #     ofd.write("# BOS: <s>\n# EOS: </s>\n# UNK: <UNK>\n<s>\n</s>\n<UNK>\n")
+    #     ofd.write("\n".join(sorted(words)) + "\n")                                      
+    # return None
+def collect_text_emitter(target, source, env):
+    if not tarfile.is_tarfile(source[0].rstr()):
+        env.Exit()
+    else:
+        return target, source
 
+def resample(target, source, env):
+    a48 = Audio()
+    a8  = Audio()
+    dec = Decimator()
+    dec.factor = 6
+    dec.readFilter(source[1].rstr())
+
+    typeL = [ 'conversational', 'scripted' ]
+    setL  = [ 'dev', 'training', 'untranscribed-training' ]
+
+    with tarfile.open(target[0].rstr(), "w:gz") as ofd:
+        with tarfile.open(source[0].rstr(), "r:gz") as ifd:
+            for member in ifd.getmembers():
+                if member.name.endswith("wav"):
+                    with temp_file() as src, temp_file() as dst:
+                        fd = open(src, "w")
+                        fd.write(ifd.extractfile(member).read())
+                        fd.close()
+                        a48.readWAV(src)
+                        dec.compute(a48)
+                        a8.copy(dec)
+                        a8.writeWAV(dst, 8000)
+                        ofd.add(dst, arcname=member.name)
+                else:
+                    ofd.addfile(member, ifd.extractfile(member))    
+    return None
+    
 def TOOLS_ADD(env):
     env.Append(BUILDERS = {
+        "Resample" : Builder(action=resample),
+        "CollectText" : Builder(action=collect_text),
         "CleanWords" : Builder(action=clean_words),
         "PrepareSegmentationsForRelease" : Builder(action=Action(prepare_segmentations_for_release, varlist=["NON_ACOUSTIC_GRAPHEMES"])),
         "KeywordsToList" : Builder(action=keywords_to_list),
