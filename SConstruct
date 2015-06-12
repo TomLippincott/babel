@@ -17,14 +17,14 @@ import asr_tools
 import kws_tools
 
 # imports from the "python" repository
-import scala_tools
+#import scala_tools
 import morfessor_tools
-import emma_tools
-import trmorph_tools
-import sfst_tools
-import evaluation_tools
-import almor_tools
-import mila_tools
+#import emma_tools
+#import trmorph_tools
+#import sfst_tools
+#import evaluation_tools
+#import almor_tools
+#import mila_tools
 import pycfg_tools
 import torque_tools
 import vocabulary_tools
@@ -55,7 +55,6 @@ vars.AddVariables(
     ("RUN_ASR", "Whether to perform ASR: otherwise, use dummy builders", True),
     ("RUN_KWS", "Whether to perform KWS: otherwise, use dummy builders", True),
     ("RUN_SEGMENTATION", "Whether to learn morphological models and apply them to other word lists", True),
-    ("PROCESS_PACKS", "List of language packs to process (from \"VLLP\", \"ALP\", \"LLP\", \"FLP\")", []),
 
     # parameters related to how Adaptor Grammars are trained (i.e. using the py-cfg tool)
     ("NUM_ITERATIONS", "Number of training iterations", 1000),
@@ -183,8 +182,9 @@ logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%Y-%m-%d %H:%M:%S
 
 # initialize build environment
 env = Environment(variables=vars, ENV=os.environ, TARFLAGS="-c -z", TARSUFFIX=".tgz",
-                  tools=["default", "textfile"] + [x.TOOLS_ADD for x in [babel_tools, evaluation_tools, scala_tools, morfessor_tools, emma_tools, 
-                                                                         trmorph_tools, sfst_tools, mila_tools, almor_tools, pycfg_tools,
+                  tools=["default", "textfile"] + [x.TOOLS_ADD for x in [babel_tools, morfessor_tools,
+                                                                         #mila_tools, almor_tools, 
+                                                                         pycfg_tools,
                                                                          asr_tools, kws_tools, vocabulary_tools, g2p_tools, scons_tools,
                                                                          openfst_tools,
                                                                      ]],
@@ -235,63 +235,61 @@ for language, properties in env["LANGUAGES"].iteritems():
     env.Replace(FORCE_SPLIT=["-"])
     
     packs = {}
-    resampled_pack = env.Resample("work/resampled_packs/${BABEL_ID}.tgz", ["${LANGUAGE_PACK_PATH}/${BABEL_ID}.tgz", "data/down6x.filt"])
-    stripped_pack = env.FilterTar("work/stripped_packs/${BABEL_ID}.tgz", [resampled_pack, env.Value(r".*transcription.*")])
+    #resampled_pack = env.Resample("work/resampled_packs/${BABEL_ID}.tgz", ["${LANGUAGE_PACK_PATH}/${BABEL_ID}.tgz", "data/down6x.filt"])
+    stripped_pack = env.FilterTar("work/stripped_packs/${BABEL_ID}.tgz", ["${LANGUAGE_PACK_PATH}/${BABEL_ID}.tgz", env.Value(r".*transcription.*")])
     
-    if "FLP" in properties.get("PACKS", []) and "FLP" in env.get("PROCESS_PACKS", []):
+    if "FLP" in properties.get("PACKS", []):
         packs["FLP"] = env.CollectText("work/texts/${LANGUAGE_NAME}_FLP.txt",
                                        [stripped_pack, env.Value(".*transcription.*txt")],
                                    )
     
-    if "LLP" in properties.get("PACKS", []) and "LLP" in env.get("PROCESS_PACKS", []):
+    if "LLP" in properties.get("PACKS", []):
         packs["LLP"] = env.CollectText("work/texts/${LANGUAGE_NAME}_LLP.txt",
                                        [stripped_pack, env.Value(".*sub-train/transcription.*txt")],
         )
     
-    if "VLLP" in properties.get("PACKS", []) and "VLLP" in env.get("PROCESS_PACKS", []):
+    if "VLLP" in properties.get("PACKS", []):
         packs["VLLP"] = env.StmToData("work/texts/${LANGUAGE_NAME}_VLLP.txt",
                                       ["${BASE_PATH}/LPDefs.20141006.tgz", env.Value(env.subst(".*IARPA-babel${BABEL_ID}.*.VLLP.training.transcribed.stm"))]
         )
 
-    all_texts += packs.values()
+    # all_texts += packs.values()
     
-    dev_keyword_file = env.Glob(env.subst("${DEV_KEYWORD_FILE}"))
-    #dev_keyword_list = env.KeywordsToList("work/keywords/${LANGUAGE_NAME}_dev.txt", dev_keyword_file)
-    #dev_keyword_text_file = env.KeywordXMLToText("work/adaptor_grammar/${LANGUAGE_NAME}_dev_keywords.txt", dev_keyword_file)
-    #eval_keyword_file = env.Glob(env.subst("${EVAL_KEYWORD_FILE}"))
-    #eval_keyword_list = env.KeywordsToList("work/keywords/${LANGUAGE_NAME}_eval.txt", eval_keyword_file)
+    # dev_keyword_file = env.Glob(env.subst("${DEV_KEYWORD_FILE}"))
+    # #dev_keyword_list = env.KeywordsToList("work/keywords/${LANGUAGE_NAME}_dev.txt", dev_keyword_file)
+    # #dev_keyword_text_file = env.KeywordXMLToText("work/adaptor_grammar/${LANGUAGE_NAME}_dev_keywords.txt", dev_keyword_file)
+    # #eval_keyword_file = env.Glob(env.subst("${EVAL_KEYWORD_FILE}"))
+    # #eval_keyword_list = env.KeywordsToList("work/keywords/${LANGUAGE_NAME}_eval.txt", eval_keyword_file)
     
-    keyword_lists = []
-    for kwfile in env.Glob("${INDUSDB_PATH}/IARPA-babel${BABEL_ID}*kwlist*xml") + env.Glob(env.subst("${EVAL_KEYWORD_FILE}")):
-        basename = os.path.splitext(os.path.basename(kwfile.rstr()))[0]
-        keyword_lists.append(env.KeywordsToList("work/keyword_lists/${LANGUAGE_NAME}/%s.txt" % basename, kwfile))
+    # keyword_lists = []
+    # for kwfile in env.Glob("${INDUSDB_PATH}/IARPA-babel${BABEL_ID}*kwlist*xml") + env.Glob(env.subst("${EVAL_KEYWORD_FILE}")):
+    #     basename = os.path.splitext(os.path.basename(kwfile.rstr()))[0]
+    #     keyword_lists.append(env.KeywordsToList("work/keyword_lists/${LANGUAGE_NAME}/%s.txt" % basename, kwfile))
             
-    testing_lists = env.Glob("data/testing_lists/${BABEL_ID}*")
+    # testing_lists = env.Glob("data/testing_lists/${BABEL_ID}*")
     
-    for training_words in env.Glob("data/training_lists/${BABEL_ID}*"):
-        continue
-        target_base = os.path.splitext(training_words.name)[0]
+    # for training_words in env.Glob("data/training_lists/${BABEL_ID}*"):
+    #     continue
+    #     target_base = os.path.splitext(training_words.name)[0]
         
-        cleaned_training_words = env.CleanWords("work/word_lists/${TARGET_BASE}.txt", training_words, TARGET_BASE=target_base, LOWER_CASE=True)
+    #     cleaned_training_words = env.CleanWords("work/word_lists/${TARGET_BASE}.txt", training_words, TARGET_BASE=target_base, LOWER_CASE=True)
         
-        segmented = env.MorfessorBabelExperiment(target_base,
-                                                 properties.get("NON_ACOUSTIC_GRAPHEMES", []),
-                                                 "web-data",
-                                                 cleaned_training_words + keyword_lists + testing_lists,
-                                            )
+    #     segmented = env.MorfessorBabelExperiment(target_base,
+    #                                              properties.get("NON_ACOUSTIC_GRAPHEMES", []),
+    #                                              "web-data",
+    #                                              cleaned_training_words + keyword_lists + testing_lists,
+    #                                         )
         
-        for model_name in model_names:            
-            continue
-            segmented = env.AdaptorGrammarBabelExperiment(target_base,
-                                                          model_name,
-                                                          properties.get("NON_ACOUSTIC_GRAPHEMES", []),
-                                                          cleaned_training_words + keyword_lists
-            )
+    #     for model_name in model_names:            
+    #         continue
+    #         segmented = env.AdaptorGrammarBabelExperiment(target_base,
+    #                                                       model_name,
+    #                                                       properties.get("NON_ACOUSTIC_GRAPHEMES", []),
+    #                                                       cleaned_training_words + keyword_lists
+    #         )
     
     for pack, data in packs.iteritems():
-        continue
-        if pack not in env.get("PROCESS_PACKS", [pack]):
-            continue
+
         env.Replace(PACK=pack)        
         baseline_vocabulary = env.File("${VOCABULARY_FILE}")
         baseline_pronunciations = env.File("${PRONUNCIATIONS_FILE}")

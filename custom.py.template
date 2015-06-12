@@ -1,28 +1,9 @@
-#BASE_PATH = "/home/tom/projects/babel_data"
-#ASR_JOB_COUNT = 200
-#KWS_JOB_COUNT = 40
-#THREADED_SUBMIT_NODE = True
-#TORQUE_SUBMIT_NODE = True
-#PYCFG_PATH = "/home/tom/py-cfg"
-#NUM_ITERATIONS = 1000
+# BASE_PATH = "/vega/ccls/projects/babel"
+# ASR_JOB_COUNT = 40
+# KWS_JOB_COUNT = 40
+# THREADED_SUBMIT_NODE = False
+# TORQUE_SUBMIT_NODE = False
 # LANGUAGES = {
-#     #"german" : {},
-#     #"hebrew" : {},
-#     #"english" : {
-#     #    "HAS_PREFIXES" : False,
-#     #    "HAS_SUFFIXES" : True,
-#     #    "IS_AGGLUTINATIVE" : False,
-#         #"BABEL_ID" : 001,
-#         #},
-#     #"arabic" : {
-#         #"BABEL_ID" : 002,
-#     #},
-#     #"mandarin" : {
-#         #"BABEL_ID" : 003,
-#         #},
-#     #"cantonese" : {
-#     #    "BABEL_ID" : 101,
-#     #},
 #     "assamese" : {
 #         "BABEL_ID" : 102,
 #         "PACKS" : ["FLP", "LLP"],
@@ -40,9 +21,6 @@
 #   # |  ou   |  oU   |
 #   # |  oi~  |  oI~  |
 #   # |  ou~  |  oU~  |
-
-
-
 #     },
 #     "pashto" : {
 #         "BABEL_ID" : 104,
@@ -52,9 +30,6 @@
 #   # | u     | U     |
 #   # | u:    | U:    |
 #   # | r`    | l`_X  | 
-
-
-
 #     },
 #     "turkish" : {
 #         "HAS_PREFIXES" : False,
@@ -68,8 +43,6 @@
 #   # | r`    | 4_0   |
 #   # | 1     | M     |
 #   # | 1:    | M:    |
-
-
 #     },
 #     "tagalog" : {
 #         "BABEL_ID" : 106,
@@ -105,7 +78,8 @@
 #     },
 #     "tok_pisin" : {
 #         "BABEL_ID" : 207,
-#         "PACKS" : ["FLP", "LLP"],
+#         "PACKS" : ["FLP", "VLLP"],
+#	  "GRAPHEMIC" : True,
 #     },
 #     "cebuano" : {
 #         "BABEL_ID" : 301,
@@ -117,7 +91,6 @@
 #         "IS_AGGLUTINATIVE" : True,
 #         "PACKS" : ["FLP", "VLLP"],
 #         "GRAPHEMIC" : True,
-#         #"LOWER_CASE" : False,
 #     },
 #     "telugu" : {
 #         "BABEL_ID" : 303,
@@ -126,6 +99,11 @@
 #     },
 #     "lithuanian" : {
 #         "BABEL_ID" : 304,
+#         "PACKS" : ["FLP", "VLLP"],
+#         "GRAPHEMIC" : True,
+#     },
+#     "swahili" : {
+#         "BABEL_ID" : 202,
 #         "PACKS" : ["FLP", "VLLP"],
 #         "GRAPHEMIC" : True,
 #     },

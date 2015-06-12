@@ -7,7 +7,6 @@ import logging
 import os.path
 import os
 import cPickle as pickle
-import numpy
 import math
 try:
     import lxml.etree as et
@@ -63,23 +62,6 @@ def collate_results(target, source, env):
         for k, v in data.iteritems():
             k = {"METHOD" : k[1], "LANG" : k[0], "UNITS" : k[2].split("-")[0]}
             ofd.write("\t".join([k.get(p.upper(), "").title() for p in properties] + [v.get(n, "") for n in names]) + "\n")
-    return None
-
-def top_words_by_tag(target, source, env):
-    with meta_open(source[0].rstr()) as ifd:
-        data = DataSet.from_stream(ifd)[-1]
-    counts = numpy.zeros(shape=(len(data.indexToWord), len(data.indexToTag)))
-    for sentence in data.sentences:
-        for w, t, aa in sentence:
-            counts[w, t] += 1
-    tag_totals = counts.sum(0)
-    word_totals = counts.sum(1)
-    keep = 10
-    with meta_open(target[0].rstr(), "w") as ofd:
-        for tag_id, tag_total in enumerate(tag_totals):
-            word_counts = counts[:, tag_id] #.argsort()
-            indices = [(i, word_counts[i]) for i in reversed(word_counts.argsort())][0:keep]
-            ofd.write(" ".join(["%s-%.2f-%.2f" % (data.indexToWord[i], float(c) / tag_total, float(c) / word_totals[i]) for i, c in indices]) + "\n")
     return None
 
 def conllish_to_xml(target, source, env):
@@ -1052,7 +1034,7 @@ def TOOLS_ADD(env):
         "TranscriptsToData" : Builder(action=transcripts_to_data),
         "CONLLishToXML" : Builder(action=conllish_to_xml),
         #"CollateResults" : Builder(action=collate_results),
-        "TopWordsByTag" : Builder(action=top_words_by_tag),
+        #"TopWordsByTag" : Builder(action=top_words_by_tag),
         "RtmToData" : Builder(action=rtm_to_data),
         "BuildSite" : Builder(action=build_site, emitter=build_site_emitter),
         "BuildPropertyTables" : Builder(action=build_property_tables, emitter=build_property_tables_emitter),
