@@ -77,7 +77,8 @@ vars.AddVariables(
     ("TORQUE_MEMORY", "Maximum memory usage for each Torque job", "3500mb"),
     ("TORQUE_INTERVAL", "How often to check whether all pending Torque jobs have finished", 60),
     ("TORQUE_LOG", "Where Torque will create log files", "work/"),
-
+    ("BASHRC_TXT", "Bash script that sets up environment variables", "${BASE_PATH}/bashrc.txt"),
+    
     # Torque bookkeeping variables (don't set these yourself)
     BoolVariable("WORKER_NODE", "Tracks whether this is a worker node", False),
     ("JOB_ID", "Tracks which parallel job this is", 0),
