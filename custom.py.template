@@ -108,3 +108,17 @@
 #         "GRAPHEMIC" : True,
 #     },
 # }
+#
+# LANGUAGES = {
+#     "zulu" : LANGUAGES["zulu"],
+#     "tagalog" : LANGUAGES["tagalog"],
+#     "assamese" : LANGUAGES["assamese"],
+#     "hatian_creole" : LANGUAGES["hatian_creole"],
+#     "swahili" : LANGUAGES["swahili"],
+#     "tok_pisin" : LANGUAGES["tok_pisin"],
+#     "kurmanji" : LANGUAGES["kurmanji"],
+#     "cebuano" : LANGUAGES["cebuano"],
+#     "kazakh" : LANGUAGES["kazakh"],
+#     "telugu" : LANGUAGES["telugu"],
+#     "lithuanian" : LANGUAGES["lithuanian"],
+# }

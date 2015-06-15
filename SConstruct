@@ -33,6 +33,7 @@ import openfst_tools
 from scons_tools import make_threaded_builder
 from torque_tools import make_torque_builder
 import scons_tools
+from common_tools import meta_open
 
 # Everything is configured by variables described below, where you can see (NAME, HELP_TEXT, DEFAULT_VALUE)
 # These shouldn't be edited here, but rather overridden in the custom.py file
@@ -190,6 +191,18 @@ env = Environment(variables=vars, ENV=os.environ, TARFLAGS="-c -z", TARSUFFIX=".
                                                                      ]],
                   )
 
+def dummy_segmentation(target, source, env):
+    words = set()
+    with meta_open(source[0].rstr()) as ifd:
+        for line in ifd:
+            word, count = line.strip().split()
+            words.add(word)
+    with meta_open(target[0].rstr(), "w") as ofd:
+        ofd.write("\n".join(words) + "\n")            
+    return None
+
+env["BUILDERS"]["DummySegmentation"] = Builder(action=dummy_segmentation)
+
 # this is the ugly mechanism that handles replacing a builder with a threaded/torque proxy
 for b, t, s, ss in env["LONG_RUNNING"]:
     if env["WORKER_NODE"]:
@@ -217,9 +230,6 @@ env['PRINT_CMD_LINE_FUNC'] = print_cmd_line
 # use time stamps to determine if a target needs to be rebuilt
 env.Decider("timestamp-newer")
 
-
-
-
 #
 # Begin defining the actual experiments and dependencies
 #
@@ -235,8 +245,9 @@ for language, properties in env["LANGUAGES"].iteritems():
     env.Replace(FORCE_SPLIT=["-"])
     
     packs = {}
-    #resampled_pack = env.Resample("work/resampled_packs/${BABEL_ID}.tgz", ["${LANGUAGE_PACK_PATH}/${BABEL_ID}.tgz", "data/down6x.filt"])
-    stripped_pack = env.FilterTar("work/stripped_packs/${BABEL_ID}.tgz", ["${LANGUAGE_PACK_PATH}/${BABEL_ID}.tgz", env.Value(r".*transcription.*")])
+    #resampled_pack = env.Resample("work/resampled_packs/${BABEL_ID}.tar", ["${LANGUAGE_PACK_PATH}/${BABEL_ID}.tar", "data/down6x.filt"])
+    #stripped_pack = env.FilterTar("work/stripped_packs/${BABEL_ID}.tar", ["${LANGUAGE_PACK_PATH}/${BABEL_ID}.tar", env.Value(r".*transcription.*")])
+    stripped_pack = env.FilterTar("work/stripped_packs/${BABEL_ID}.tgz", ["${LANGUAGE_PACK_PATH}/${BABEL_ID}_resampled.tgz", env.Value(r".*transcription.*")])
     
     if "FLP" in properties.get("PACKS", []):
         packs["FLP"] = env.CollectText("work/texts/${LANGUAGE_NAME}_FLP.txt",
@@ -298,108 +309,40 @@ for language, properties in env["LANGUAGES"].iteritems():
         if os.path.exists(pjoin(env.subst("${IBM_MODELS}/${BABEL_ID}/${PACK}"))):
             baseline_language_model = env.Glob("${IBM_MODELS}/${BABEL_ID}/${PACK}/models/*.arpabo.gz")[0]
             env.Replace(ACOUSTIC_WEIGHT=properties.get("ACOUSTIC_WEIGHT", .10))
-            baseline_asr_output = env.RunASR("work/asr_experiments/${LANGUAGE_NAME}/${PACK}/baseline", baseline_vocabulary, baseline_pronunciations, baseline_language_model)
+            baseline_asr_output = env.RunASR("work/asr_experiments/${LANGUAGE_NAME}/${PACK}/baseline",
+                                             baseline_vocabulary,
+                                             baseline_pronunciations,
+                                             baseline_language_model)
             #baseline_kws_output = env.RunKWS("work/kws_experiments/${LANGUAGE_NAME}/${PACK}/baseline",
             #                                 [x[1] for x in baseline_asr_output[1:]], baseline_vocabulary, baseline_pronunciations, dev_keyword_file)
-            
-            # for model_name, segmentation in segmentations.iteritems():
-            #     env.Replace(MODEL=model_name)
-            #     segmented_pronunciations_training, morphs = env.SegmentedPronunciations(["work/pronunciations/${LANGUAGE_NAME}_${PACK}_${MODEL}_segmented.txt",
-            #                                                                              "work/pronunciations/${LANGUAGE_NAME}_${PACK}_${MODEL}_morphs.txt"],
-            #                                                                             [baseline_pronunciations, segmentation])
-            #     if properties.get("GRAPHEMIC", False):
-            #         morph_pronunciations = env.GraphemicPronunciations("work/pronunciations/${LANGUAGE_NAME}_${PACK}_${MODEL}_morph_pronunciations.txt", morphs)
-            #     else:
-            #         g2p_segmented_model = env.TrainG2P("work/pronunciations/${LANGUAGE_NAME}_${PACK}_${MODEL}_segmented_model_1.txt", segmented_pronunciations_training)
-            #         morph_pronunciations = env.ApplyG2P("work/pronunciations/${LANGUAGE_NAME}_${PACK}_${MODEL}_morph_pronunciations.txt", [g2p_segmented_model, morphs])
-            #     segmented_vocabulary, segmented_pronunciations = env.PronunciationsToVocabDict(
-            #         ["work/asr_input/${LANGUAGE_NAME}_${PACK}_${MODEL}_vocabulary.txt", "work/asr_input/${LANGUAGE_NAME}_${PACK}_${MODEL}_pronunciations.txt"],
-            #         [morph_pronunciations, baseline_pronunciations, env.Value(properties.get("GRAPHEMIC", False))])
 
-            #     segmented_training_text = env.SegmentTranscripts("work/segmented_training/${LANGUAGE_NAME}_${PACK}_${MODEL}.txt", [data, segmentation])
-            #     segmented_language_model = env.TrainLanguageModel("work/asr_input/${LANGUAGE_NAME}_${PACK}_${MODEL}_languagemodel_segmented.arpabo.gz",
-            #                                                       [segmented_training_text, Value(2)])
-                #morfessor_asr_output = env.RunASR("work/asr_experiments/${LANGUAGE_NAME}/${PACK}/morfessor", segmented_vocabulary, segmented_pronunciations, segmented_language_model)
+        continue
+        if True:
+            word_list = env.WordList("work/word_lists/${LANGUAGE_NAME}_${PACK}.txt", data)
+            segmentations["dummy"] = env.DummySegmentation("work/segmentations/${LANGUAGE_NAME}/${PACK}/dummy.txt", word_list)
+            morfessor, morfessor_model = env.TrainMorfessor(["work/morfessor/${LANGUAGE_NAME}_${PACK}.txt", "work/morfessor/${LANGUAGE_NAME}_${PACK}.model"], word_list)
+            segmentations["morfessor"] = morfessor
+            
+            for model_name, segmentation in segmentations.iteritems():
+                env.Replace(MODEL=model_name)
+                segmented_pronunciations_training, morphs = env.SegmentedPronunciations(["work/pronunciations/${LANGUAGE_NAME}_${PACK}_${MODEL}_segmented.txt",
+                                                                                         "work/pronunciations/${LANGUAGE_NAME}_${PACK}_${MODEL}_morphs.txt"],
+                                                                                        [baseline_pronunciations, segmentation])
+                if properties.get("GRAPHEMIC", False):
+                    morph_pronunciations = env.GraphemicPronunciations("work/pronunciations/${LANGUAGE_NAME}_${PACK}_${MODEL}_morph_pronunciations.txt", morphs)
+                else:
+                    g2p_segmented_model = env.TrainG2P("work/pronunciations/${LANGUAGE_NAME}_${PACK}_${MODEL}_segmented_model_1.txt", segmented_pronunciations_training)
+                    morph_pronunciations = env.ApplyG2P("work/pronunciations/${LANGUAGE_NAME}_${PACK}_${MODEL}_morph_pronunciations.txt", [g2p_segmented_model, morphs])
+
+                segmented_vocabulary, segmented_pronunciations = env.PronunciationsToVocabDict(
+                    ["work/asr_input/${LANGUAGE_NAME}_${PACK}_${MODEL}_vocabulary.txt", "work/asr_input/${LANGUAGE_NAME}_${PACK}_${MODEL}_pronunciations.txt"],
+                    [morph_pronunciations, baseline_pronunciations, env.Value(properties.get("GRAPHEMIC", False))])
+
+                segmented_training_text = env.SegmentTranscripts("work/segmented_training/${LANGUAGE_NAME}_${PACK}_${MODEL}.txt", [data, segmentation])
+                segmented_language_model = env.TrainLanguageModel("work/asr_input/${LANGUAGE_NAME}_${PACK}_${MODEL}_languagemodel_segmented.arpabo.gz",
+                                                                  [segmented_training_text, Value(2)])
+                segmented_asr_output = env.RunASR("work/asr_experiments/${LANGUAGE_NAME}/${PACK}/${MODEL}",
+                                                  segmented_vocabulary,
+                                                  segmented_pronunciations,
+                                                  segmented_language_model)
                 #morfessor_kws_output = env.RunKWS("work/kws_experiments/${LANGUAGE_NAME}/${PACK}/morfessor", [x[1] for x in morfessor_asr_output[1:]], segmented_vocabulary, segmented_pronunciations, dev_keyword_file)
-                # training_vocabulary_file = env.TextToVocabulary("work/vocabularies/${LANGUAGE_NAME}/training.txt.gz",
-    #                                                 training_text)
-    # dev_vocabulary_file = env.TextToVocabulary("work/vocabularies/${LANGUAGE_NAME}/development.txt.gz",
-    #                                            dev_text)
-    #language_model_file = env.Glob("${LANGUAGE_MODEL_FILE}")[0]
-    #    dnet = env.GraphFile("${GRAPH_FILE}", [vocabulary_file, pronunciations_file, language_model_file])
-        #warp = env.VTLN("${WARP_FILE}", [])
-        #env.RunASR([dnet])
-        #(asr_output, asr_score) = env.RunASR("baseline", LANGUAGE_ID=babel_id, ACOUSTIC_WEIGHT=properties["ACOUSTIC_WEIGHT"])    
-    #full_transcripts = env.ExtractTranscripts("work/full_transcripts/${LANGUAGE_NAME}.xml.gz", ["${STRIPPED_LANGUAGE_PACK_PATH}/${BABEL_ID}.tgz", Value({})])
-    #limited_transcripts = env.ExtractTranscripts("work/training_transcripts/${LANGUAGE_NAME}_training.xml.gz", ["${STRIPPED_LANGUAGE_PACK_PATH}/${BABEL_ID}.tgz",
-    #Value({"PATTERN" : r".*sub-train.*transcription.*txt"})])
-    #limited_data = env.TranscriptsToData("work/training_data/${LANGUAGE_NAME}.xml.gz", [limited_transcripts, Value({})])
-    #full_data = env.TranscriptsToData("work/full_data/${LANGUAGE_NAME}.xml.gz", [full_transcripts, Value({})])
-    #morfessor, morfessor_model = env.TrainMorfessor(["work/morfessor/${LANGUAGE_NAME}.xml.gz", "work/morfessor/${LANGUAGE_NAME}.model"], limited_data)
-    #continue
-    #terms = env.Glob("${INDUSDB_PATH}/IARPA-babel${BABEL_ID}*-dev.kwlist*.xml")[0]
-    #segmented_terms = env.ApplyMorfessor(["work/segmented_terms/${LANGUAGE_NAME}.txt"], [morfessor_model, terms])
-    #segmented_pronunciations_training, morphs = env.SegmentedPronunciations(["work/pronunciations/${LANGUAGE_NAME}_${PACK}_segmented.txt",
-    #                                                                         "work/pronunciations/${LANGUAGE_NAME}_${PACK}_morphs.txt"], [pronunciations_file, morfessor])
-    #g2p_segmented_model = env.TrainG2P("work/pronunciations/${LANGUAGE_NAME}_${PACK}_morfessor_model_1.txt", segmented_pronunciations_training)
-    #for i in range(2, 5):
-    #    g2p_segmented_model = env.TrainG2P("work/pronunciations/${LANGUAGE_NAME}_segmented_model_%d.txt" % (i), [g2p_segmented_model, segmented_pronunciations_training])
-    #g2p_model = env.TrainG2P("work/pronunciations/${LANGUAGE_NAME}_morfessor_model_1.txt", pronunciations_file)
-    #for i in range(2, 5):
-    #    g2p_model = env.TrainG2P("work/pronunciations/${LANGUAGE_NAME}_model_%d.txt" % (i), [g2p_model, pronunciations_file])
-    #ibm_g2p_model = env.File("${LORELEI_SVN}/${BABEL_ID}/LimitedLP/models/g2p.4.model")
-    #morph_pronunciations = env.ApplyG2P("work/pronunciations/${LANGUAGE_NAME}_${PACK}_morfessor_pronunciations.txt", [g2p_segmented_model, morphs])
-    #segmented_vocabulary, segmented_pronunciations = env.PronunciationsToVocabDict(
-    #    ["work/asr_input/${LANGUAGE_NAME}_${PACK}_morfessor_vocabulary.txt", "work/asr_input/${LANGUAGE_NAME}_${PACK}_morfessor_pronunciations.txt"],
-    #    [morph_pronunciations, pronunciations_file])
-    #segmented_training_text = env.SegmentTranscripts("work/segmented_training/${LANGUAGE_NAME}.txt.gz", [training_text, morfessor])
-    #segmented_language_model = env.IBMTrainLanguageModel("work/asr_input/${LANGUAGE_NAME}/languagemodel_segmented.arpabo.gz", [segmented_training_text, Value(2)])
-    #morfessor_asr_output = env.RunASR("work/asr_experiments/${LANGUAGE_NAME}/morfessor", segmented_vocabulary, segmented_pronunciations, segmented_language_model)
-    #morfessor_kws_output = env.RunCascadeKWS("work/kws_experiments/${LANGUAGE_NAME}/morfessor", [baseline_asr_output, morfessor_asr_output], segmented_vocabulary, segmented_pronunciations)
-    #
-    # Adaptor Grammar Experiments
-    #
-    #query_file = env.QueryFile() # just search terms, one per line
-    #word_dictionary = env.WordDictionary() # running(01) runn+ +ing
-    #hyb_dict = env.HybDict() # runn+(01) runn+
-    #seg_transcripts, seg_vocabulary, seg_pronunciations, seg_language_model = env.ApplySegmentations(morfessor, training_vocabulary_file, pronunciations_file)
-    # IBMTrainLanguageModel
-#     for run in range(1, env["RUNS"] + 1):
-#         env.Replace(RUN=str(run))
-#         if properties.get("VLLP", False):
-#             very_limited_data = env.StmToData("work/very_limited_data/${LANGUAGE}_${RUN}.xml.gz", 
-#                                               ["${BABEL_DATA_PATH}/LPDefs.20141006.tgz", env.Value(".*IARPA-babel%d.*VLLP.training.transcribed.stm" % babel_id)])
-#         else:
-#             very_limited_data = env.GenerateDataSubset("work/very_limited_data/${LANGUAGE}_${RUN}.xml.gz", [full_data, Value({"RANDOM" : True, "WORDS" : 30000})])
-#         has_morphology = os.path.exists(env.subst("data/${LANGUAGE}_morphology.txt"))
-#         if has_morphology:
-#             very_limited_data_morph = env.AddMorphology("work/data/${LANGUAGE}/very_limited_morph_${RUN}.xml.gz", [very_limited_data, "data/${LANGUAGE}_morphology.txt"])
-#             limited_data_morph = env.AddMorphology("work/data/${LANGUAGE}/limited_morph_${RUN}.xml.gz", [limited_data, "data/${LANGUAGE}_morphology.txt"])
-#         templates = env.Glob("data/grammar_fragments/templates/${LANGUAGE}_*.txt")
-#         print templates
-#         continue
-#         characters = env.CharacterProductions("work/character_productions/${LANGUAGE}_${RUN}.txt", very_limited_data)
-#         data = env.MorphologyData("work/ag_data/${LANGUAGE}_${RUN}.txt", very_limited_data)
-#         arguments = Value({"LANGUAGE" : language, "SSN" : "None", "RUN" : str(run)})
-#         cfg = env.ComposeGrammars("work/ag_models/${LANGUAGE}_${RUN}_plain.txt", [template, characters])
-#         parses, grammar, trace_file = env.RunPYCFG([cfg, data, arguments])
-#         py = env.MorphologyOutputToEMMA([parses, arguments])                        
-#         guess, gold = env.PrepareDatasetsForEMMA([py, very_limited_data_morph, arguments])                                                                 
-#         results.append(env.RunEMMA([guess, gold, arguments]))
-#         for ssn in env.Glob("data/grammar_fragments/${LANGUAGE}_*.txt"):
-#             stem = re.match(r"^%s_(.*).txt$" % language, os.path.basename(ssn.rstr())).groups()[0]
-#             arguments = Value({"LANGUAGE" : language,
-#                                "SSN" : stem,
-#                                "RUN" : str(run),
-#                            })
-#             cfg = env.ComposeGrammars("work/ag_models/${LANGUAGE}_${RUN}_%s.txt" % stem, [template, ssn, characters])
-#             parses, grammar, trace_file = env.RunPYCFG([cfg, data, arguments])
-#             py = env.MorphologyOutputToEMMA([parses, arguments])                        
-#             guess, gold = env.PrepareDatasetsForEMMA([py, very_limited_data_morph, arguments])                                                                 
-#             results.append(env.RunEMMA([guess, gold, arguments]))
-#         morfessor = env.TrainMorfessor("work/morfessor/${LANGUAGE}_${RUN}.xml.gz", very_limited_data_morph)        
-#         if has_morphology:
-#             guess, gold = env.PrepareDatasetsForEMMA([morfessor, very_limited_data_morph, Value({"LANGUAGE" : "$LANGUAGE", "MODEL" : "MORFESSOR", "RUN" : str(run)})])
-#             results.append(env.RunEMMA([guess, gold, Value({"LANGUAGE" : "$LANGUAGE", "MODEL" : "MORFESSOR", "RUN" : str(run)})]))
-# env.CollateResults("work/results.txt", results)
-# env.VocabularyComparison("work/vocabulary_comparison.txt", all_texts)

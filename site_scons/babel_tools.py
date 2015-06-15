@@ -19,7 +19,7 @@ from os.path import join as pjoin
 from os import listdir
 import tarfile
 from random import randint, shuffle
-from common_tools import DataSet, meta_open, pairs, temp_file
+from common_tools import DataSet, meta_open, pairs, temp_file, temp_dir
 import time
 import codecs
 from attila import Audio, Decimator
@@ -994,32 +994,90 @@ def collect_text_emitter(target, source, env):
         return target, source
 
 def resample(target, source, env):
-    a48 = Audio()
-    a8  = Audio()
-    dec = Decimator()
-    dec.factor = 6
-    dec.readFilter(source[1].rstr())
+
 
     typeL = [ 'conversational', 'scripted' ]
     setL  = [ 'dev', 'training', 'untranscribed-training' ]
 
-    with tarfile.open(target[0].rstr(), "w:gz") as ofd:
-        with tarfile.open(source[0].rstr(), "r:gz") as ifd:
+    with meta_open(target[0].rstr(), "w") as ofd:
+        with meta_open(source[0].rstr(), "r") as ifd:
             for member in ifd.getmembers():
+                print member.name
                 if member.name.endswith("wav"):
                     with temp_file() as src, temp_file() as dst:
-                        fd = open(src, "w")
-                        fd.write(ifd.extractfile(member).read())
-                        fd.close()
-                        a48.readWAV(src)
-                        dec.compute(a48)
-                        a8.copy(dec)
-                        a8.writeWAV(dst, 8000)
+                        with meta_open(src, "w", enc=None) as fd:
+                            fd.write(ifd.extractfile(member).read())
+                        
+                        #a48 = Audio()
+                        #a8  = Audio()
+                        #dec = Decimator()
+                        #dec.factor = 6
+                        #dec.readFilter(source[1].rstr())
+                        #a48.readWAV(src)
+                        #dec.compute(a48)
+                        #a8.copy(dec)
+                        #a8.writeWAV(dst, 8000)
+                        with meta_open(dst, "w", enc=None) as fd:
+                            fd.write(meta_open(src, enc=None).read())
                         ofd.add(dst, arcname=member.name)
-                else:
+                elif member.isfile():
                     ofd.addfile(member, ifd.extractfile(member))    
     return None
-    
+
+def _resample(target, source, env):
+
+    typeL = [ 'conversational', 'scripted' ]
+    setL  = [ 'dev', 'training', 'untranscribed-training' ]
+    #with meta_open(target[0].rstr(), "w") as ofd:
+    with temp_dir() as tdir:
+        lookup = {}
+        with meta_open(source[0].rstr(), "r") as ifd:
+            for member in ifd.getmembers():
+                new_name = os.path.join(tdir, member.name)
+                try:
+                    os.makedirs(os.path.dirname(new_name))
+                except:
+                    pass
+                lookup[new_name] = member.name
+                #print member.name
+                if member.name.endswith("wav"):
+                    old_name = os.path.join(tdir, "old", member.name)
+                    try:
+                        os.makedirs(os.path.dirname(old_name))
+                    except:
+                        pass
+
+                    with meta_open(old_name, "w", enc=None) as ofd:
+                        ofd.write(ifd.extractfile(member).read())
+                    #a48 = Audio()
+                    #a8  = Audio()
+                    #dec = Decimator()
+                    #dec.factor = 6
+                    #dec.readFilter(source[1].rstr())
+                    #a48.readWAV(old_name)
+                    #dec.compute(a48)
+                    #a8.copy(dec)
+                    #a8.writeWAV(new_name, 8000)
+                    
+                elif member.isfile():
+                    with meta_open(new_name, "w", enc=None) as ofd:
+                        u = codecs.getreader("utf-8")
+                        ofd.write(ifd.extractfile(member).read())
+            with meta_open(target[0].rstr(), "w") as ofd:
+                for f, a in lookup.iteritems():
+                    ofd.add(f, arcname=a)
+    return None
+
+def word_list(target, source, env):
+    words = {}
+    with meta_open(source[0].rstr()) as ifd:
+        for line in ifd:
+            for word in line.strip().split():
+                words[word] = words.get(word, 0) + 1
+    with meta_open(target[0].rstr(), "w") as ofd:
+        ofd.write("\n".join(["%s %d" % (k, v) for k, v in words.iteritems()]) + "\n")            
+    return None
+
 def TOOLS_ADD(env):
     env.Append(BUILDERS = {
         "Resample" : Builder(action=resample),
@@ -1041,6 +1099,7 @@ def TOOLS_ADD(env):
         "BuildExtrinsicTables" : Builder(action=build_extrinsic_tables, emitter=build_extrinsic_tables_emitter),
         "SegmentTranscripts" : Builder(action=segment_transcripts),
         "VocabularyComparison" : Builder(action=vocabulary_comparison),
+        "WordList" : Builder(action=word_list),
     })
     env.AddMethod(morfessor_babel_experiment, "MorfessorBabelExperiment")
     env.AddMethod(adaptor_grammar_babel_experiment, "AdaptorGrammarBabelExperiment")
