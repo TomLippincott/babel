@@ -292,14 +292,17 @@ def run_kws(env, experiment_path, asr_output, vocabulary, pronunciations, keywor
 
     oov_pronunciations_nobreak = env.OOVPronunciations(pjoin(experiment_path, "oov_pronunciations_nobreak.txt"), [pronunciations, oov_query_terms])
     oov_pronunciations = env.AddWordBreaks(pjoin(experiment_path, "oov_pronunciations.txt"), oov_pronunciations_nobreak)
-    
+
     fst_header, phone_symbols, word_symbols, p2w_fsm, p2w_fst, w2p_fsm, w2p_fst = env.WordsToPhones(
         [pjoin(experiment_path, x) for x in ["fst_header", "phones.sym", "words.sym", "phones2words.fsm", "phones2words.fst", "words2phones.fsm", "words2phones.fst"]],
         [pronunciations, oov_pronunciations]
     )
+
     phone_symbols = env.AddPhone(pjoin(experiment_path, "p2p_workaround", "phones.sym"), [phone_symbols, Value(["u0071", "HES01", "HES02"])])
+    return None    
     #p2p_fst = env.PhonesToPhones(pjoin(experiment_path, "p2p_workaround", "P2P.fst"), p2p_file)
     p2p_fsm = env.PhonesToPhones(pjoin(experiment_path, "P2P.fsm"), [p2p_file, phone_symbols])
+
     p2p_unsorted = env.FSTCompile(pjoin(experiment_path, "P2P_unsorted.fst"), [phone_symbols, phone_symbols, p2p_fsm])
     p2p_fst = env.FSTArcSort(pjoin(experiment_path, "P2P.fst"), [p2p_unsorted, Value("ilabel")])
 

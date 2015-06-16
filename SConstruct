@@ -66,12 +66,11 @@ vars.AddVariables(
     
     # these variables determine how parallelism is exploited    
     ("LONG_RUNNING", "Names of builders that should be considered for parallel execution", []),
-    ("ASR_JOB_COUNT", "How many jobs to split a single ASR experiment into", 1),
-    ("KWS_JOB_COUNT", "How many jobs to split a single KWS experiment into", 1),
+    ("JOB_COUNT", "How many jobs to split a single experiment into", 1),
     ("TEST_ASR", "Just run the first parallel job, for testing purposes", False),
     BoolVariable("THREADED_SUBMIT_NODE", "Run parallel jobs using multiple cores", False),
     BoolVariable("TORQUE_SUBMIT_NODE", "Run parallel jobs using Torque (e.g. invoking scons on yetisubmit.cc.columbia.edu)", False),
-    
+
     # Torque-specific variables
     ("TORQUE_TIME", "Maximum running time for each torque job", "11:30:00"),
     ("TORQUE_MEMORY", "Maximum memory usage for each Torque job", "3500mb"),
@@ -85,35 +84,33 @@ vars.AddVariables(
     ("SCONSIGN_FILE", "Redirects dependency database when running on a worker node", None),
     
     # these variables define the locations of various tools and data
+    ("LANGUAGE_PACK_PATH", "", "${BASE_PATH}/language_packs"),
     ("IBM_MODELS", "Acoustic models and related files provided by IBM", "${BASE_PATH}/ibm_models"),
     ("LORELEI_SVN", "Checkout of SVN repository hosted on lorelei", "${BASE_PATH}/lorelei_svn"),
     ("ATTILA_PATH", "IBM's ASR system", "${BASE_PATH}/VT-2-5-babel"),
-    ("ATTILA_INTERPRETER", "", "${ATTILA_PATH}/tools/attila/attila"),
-    ("F4DE_PATH", "", None),
-    ("INDUSDB_PATH", "", "${BASE_PATH}/lorelei_resources/IndusDB"),
-    ("SEQUITUR_PATH", "", ""),
-    ("JAVA_NORM", "", "${BABEL_REPO}/KWS/examples/babel-dryrun/javabin"),
+    ("F4DE_PATH", "NIST software for evaluating keyword search output", None),
+    ("INDUSDB_PATH", "Babel resource with keyword lists, transcripts, segmentations, and so forth", "${BASE_PATH}/lorelei_resources/IndusDB"),
+    #("SEQUITUR_PATH", "Python library for aligning sequences (e.g. graphemes and phonemes)", "${BASE"),
     ("LIBRARY_OVERLAY", "", "${OVERLAY}/lib:${OVERLAY}/lib64:${LORELEI_TOOLS}/boost_1_49_0/stage/lib/"),
-    ("PYTHON_INTERPRETER", "", None),
-    ("SCORE_SCRIPT", "", None),
-    ("SCLITE_BINARY", "", "${BASE_PATH}/sctk-2.4.5/bin/sclite"),
-    ("LORELEI_TOOLS", "", "${BASE_PATH}/lorelei_tools"),
-    ("CN_KWS_SCRIPTS", "", "${BASE_PATH}/lorelei_svn/tools/cn-kws/scripts"),
-    ("PYCFG_PATH", "", "${BASE_PATH}/py-cfg"),
+    #("PYTHON_INTERPRETER", "", None),
+    #("SCORE_SCRIPT", "", None),
+
+    #("LORELEI_TOOLS", "", "${BASE_PATH}/lorelei_tools"),
+    ("PYCFG_PATH", "Mark Johnson's tool for training Adaptor Grammars", "${BASE_PATH}/py-cfg"),
     
     # these variables all have default definitions in terms of the previous, but may be overridden as needed
-    ("LANGUAGE_PACK_PATH", "", "${BASE_PATH}/language_packs"),
-    ("STRIPPED_LANGUAGE_PACK_PATH", "", "${BASE_PATH}/stripped_language_packs"),
-    ("BABEL_RESOURCES", "", "${BASE_PATH}/lorelei_resources"),
-    ("PYTHON", "", "/usr/bin/python"),
-    ("PERL", "", "/usr/bin/perl"),    
-    ("PERL_LIBRARIES", "", os.environ.get("PERL5LIB", "")),
+
+    #("STRIPPED_LANGUAGE_PACK_PATH", "", "${BASE_PATH}/stripped_language_packs"),
+    #("BABEL_RESOURCES", "", "${BASE_PATH}/lorelei_resources"),
+    #("PYTHON", "", "/usr/bin/python"),
+    #("PERL", "", "/usr/bin/perl"),    
+    #("PERL_LIBRARIES", "", os.environ.get("PERL5LIB", "")),
     ("G2P", "", "g2p.py"),
     ("G2P_PATH", "", "/home/tom/local/python/lib/python2.7/site-packages/"),
     ("BABEL_BIN_PATH", "", "${LORELEI_SVN}/tools/kws/bin64"),
     ("BABEL_SCRIPT_PATH", "", "${LORELEI_SVN}/tools/kws/scripts"),
-    ("F4DE_PATH", "", "${BABEL_RESOURCES}/F4DE"),
-    ("INDUS_DB", "", "${BABEL_RESOURCES}/IndusDB"),
+    #("F4DE_PATH", "", "${BABEL_RESOURCES}/F4DE"),
+    #("INDUS_DB", "", "${BABEL_RESOURCES}/IndusDB"),
     ("WRD2PHLATTICE", "", "${BABEL_BIN_PATH}/wrd2phlattice"),
     ("BUILDINDEX", "", "${BABEL_BIN_PATH}/buildindex"),
     ("BUILDPADFST", "", "${BABEL_BIN_PATH}/buildpadfst"),
@@ -144,6 +141,9 @@ vars.AddVariables(
     ("PRUNE", "", 10),
     ("RESCORE_BEAM", "", 1.5),
     ("LOWER_CASE", "", False),
+    ("CN_KWS_SCRIPTS", "", "${BASE_PATH}/lorelei_svn/tools/cn-kws/scripts"),
+    ("JAVA_NORM", "", "${BABEL_REPO}/KWS/examples/babel-dryrun/javabin"),
+    ("SCLITE_BINARY", "", "${BASE_PATH}/sctk-2.4.5/bin/sclite"),
     
     # ASR-related variables
     ("MODEL_PATH", "", "${IBM_MODELS}/${BABEL_ID}/${PACK}/models"),
@@ -241,7 +241,7 @@ for language, properties in env["LANGUAGES"].iteritems():
     env.Replace(BABEL_ID=properties["BABEL_ID"])
     env.Replace(LANGUAGE_NAME=language)
     env.Replace(LOCALE=properties.get("LOCALE"))
-    env.Replace(NON_ACOUSTIC_GRAPHEMES=properties.get("NON_ACOUSTIC_GRAPHEMES"))
+    env.Replace(NON_ACOUSTIC_GRAPHEMES=properties.get("NON_ACOUSTIC_GRAPHEMES", []))
     env.Replace(NON_WORD_PATTERN=".*(_|\<).*")
     env.Replace(FORCE_SPLIT=["-"])
     
@@ -264,41 +264,6 @@ for language, properties in env["LANGUAGES"].iteritems():
         packs["VLLP"] = env.StmToData("work/texts/${LANGUAGE_NAME}_VLLP.txt",
                                       ["${BASE_PATH}/LPDefs.20141006.tgz", env.Value(env.subst(".*IARPA-babel${BABEL_ID}.*.VLLP.training.transcribed.stm"))]
         )
-
-    # all_texts += packs.values()
-    
-    # dev_keyword_file = env.Glob(env.subst("${DEV_KEYWORD_FILE}"))
-    # #dev_keyword_list = env.KeywordsToList("work/keywords/${LANGUAGE_NAME}_dev.txt", dev_keyword_file)
-    # #dev_keyword_text_file = env.KeywordXMLToText("work/adaptor_grammar/${LANGUAGE_NAME}_dev_keywords.txt", dev_keyword_file)
-    # #eval_keyword_file = env.Glob(env.subst("${EVAL_KEYWORD_FILE}"))
-    # #eval_keyword_list = env.KeywordsToList("work/keywords/${LANGUAGE_NAME}_eval.txt", eval_keyword_file)
-    
-    # keyword_lists = []
-    # for kwfile in env.Glob("${INDUSDB_PATH}/IARPA-babel${BABEL_ID}*kwlist*xml") + env.Glob(env.subst("${EVAL_KEYWORD_FILE}")):
-    #     basename = os.path.splitext(os.path.basename(kwfile.rstr()))[0]
-    #     keyword_lists.append(env.KeywordsToList("work/keyword_lists/${LANGUAGE_NAME}/%s.txt" % basename, kwfile))
-            
-    # testing_lists = env.Glob("data/testing_lists/${BABEL_ID}*")
-    
-    # for training_words in env.Glob("data/training_lists/${BABEL_ID}*"):
-    #     continue
-    #     target_base = os.path.splitext(training_words.name)[0]
-        
-    #     cleaned_training_words = env.CleanWords("work/word_lists/${TARGET_BASE}.txt", training_words, TARGET_BASE=target_base, LOWER_CASE=True)
-        
-    #     segmented = env.MorfessorBabelExperiment(target_base,
-    #                                              properties.get("NON_ACOUSTIC_GRAPHEMES", []),
-    #                                              "web-data",
-    #                                              cleaned_training_words + keyword_lists + testing_lists,
-    #                                         )
-        
-    #     for model_name in model_names:            
-    #         continue
-    #         segmented = env.AdaptorGrammarBabelExperiment(target_base,
-    #                                                       model_name,
-    #                                                       properties.get("NON_ACOUSTIC_GRAPHEMES", []),
-    #                                                       cleaned_training_words + keyword_lists
-    #         )
     
     for pack, data in packs.iteritems():
 
@@ -314,11 +279,9 @@ for language, properties in env["LANGUAGES"].iteritems():
                                              baseline_vocabulary,
                                              baseline_pronunciations,
                                              baseline_language_model)
-            #baseline_kws_output = env.RunKWS("work/kws_experiments/${LANGUAGE_NAME}/${PACK}/baseline",
-            #                                 [x[1] for x in baseline_asr_output[1:]], baseline_vocabulary, baseline_pronunciations, dev_keyword_file)
+            baseline_kws_output = env.RunKWS("work/kws_experiments/${LANGUAGE_NAME}/${PACK}/baseline",
+                                             [x[1] for x in baseline_asr_output[1:]], baseline_vocabulary, baseline_pronunciations, env.Glob("${DEV_KEYWORD_FILE}"))
 
-        continue
-        if True:
             word_list = env.WordList("work/word_lists/${LANGUAGE_NAME}_${PACK}.txt", data)
             segmentations["dummy"] = env.DummySegmentation("work/segmentations/${LANGUAGE_NAME}/${PACK}/dummy.txt", word_list)
             morfessor, morfessor_model = env.TrainMorfessor(["work/morfessor/${LANGUAGE_NAME}_${PACK}.txt", "work/morfessor/${LANGUAGE_NAME}_${PACK}.model"], word_list)
@@ -346,4 +309,4 @@ for language, properties in env["LANGUAGES"].iteritems():
                                                   segmented_vocabulary,
                                                   segmented_pronunciations,
                                                   segmented_language_model)
-                #morfessor_kws_output = env.RunKWS("work/kws_experiments/${LANGUAGE_NAME}/${PACK}/morfessor", [x[1] for x in morfessor_asr_output[1:]], segmented_vocabulary, segmented_pronunciations, dev_keyword_file)
+                segmented_kws_output = env.RunKWS("work/kws_experiments/${LANGUAGE_NAME}/${PACK}/${MODEL}", [x[1] for x in segmented_asr_output[1:]], segmented_vocabulary, segmented_pronunciations, env.Glob("${DEV_KEYWORD_FILE}"))

@@ -228,7 +228,7 @@ def asr_test(target, source, env):
     # from test.py
     #
     jid    = int(env["JOB_ID"])
-    jnr    = int(env["ASR_JOB_COUNT"])
+    jnr    = int(env["JOB_COUNT"])
     genLat = True
     genCons = True
     writeLat = False
@@ -399,10 +399,10 @@ def run_asr(env, root_path, vocabulary, pronunciations, language_model, *args, *
         if env["TEST_ASR"]:
             to = 1
         else:
-            to = env["ASR_JOB_COUNT"]
+            to = env["JOB_COUNT"]
         for i in range(to):
-            tests.append(env.ASRTest(["${ROOT_PATH}/transcripts_${JOB_ID + 1}_of_${ASR_JOB_COUNT}.ctm.gz",
-                                      "${ROOT_PATH}/confusion_networks_${JOB_ID + 1}_of_${ASR_JOB_COUNT}.tgz"],
+            tests.append(env.ASRTest(["${ROOT_PATH}/transcripts_${JOB_ID + 1}_of_${JOB_COUNT}.ctm.gz",
+                                      "${ROOT_PATH}/confusion_networks_${JOB_ID + 1}_of_${JOB_COUNT}.tgz"],
                                      [dnet, vocabulary, pronunciations, language_model], PACK=env["PACK"], BABEL_ID=env["BABEL_ID"], JOB_ID=i))
     else:
         return [None] + [[None, x] for x in env.Glob("${ROOT_PATH}/*_[0-9]*_of_[0-9]*.tgz")]
