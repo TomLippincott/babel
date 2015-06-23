@@ -87,7 +87,7 @@ vars.AddVariables(
     ("LANGUAGE_PACK_PATH", "", "${BASE_PATH}/language_packs"),
     ("IBM_MODELS", "Acoustic models and related files provided by IBM", "${BASE_PATH}/ibm_models"),
     ("LORELEI_SVN", "Checkout of SVN repository hosted on lorelei", "${BASE_PATH}/lorelei_svn"),
-    ("ATTILA_PATH", "IBM's ASR system", "${BASE_PATH}/VT-2-5-babel"),
+    ("ATTILA_PATH", "IBM's ASR system", "${BASE_PATH}/attila"),
     ("F4DE_PATH", "NIST software for evaluating keyword search output", None),
     ("INDUSDB_PATH", "Babel resource with keyword lists, transcripts, segmentations, and so forth", "${BASE_PATH}/lorelei_resources/IndusDB"),
     #("SEQUITUR_PATH", "Python library for aligning sequences (e.g. graphemes and phonemes)", "${BASE"),
@@ -100,7 +100,6 @@ vars.AddVariables(
     
     # these variables all have default definitions in terms of the previous, but may be overridden as needed
 
-    #("STRIPPED_LANGUAGE_PACK_PATH", "", "${BASE_PATH}/stripped_language_packs"),
     #("BABEL_RESOURCES", "", "${BASE_PATH}/lorelei_resources"),
     #("PYTHON", "", "/usr/bin/python"),
     #("PERL", "", "/usr/bin/perl"),    
@@ -169,7 +168,7 @@ vars.AddVariables(
     ("CTM_PATH", "", "${OUTPUT_PATH}/ctm"),
     ("LATTICE_PATH", "", "${OUTPUT_PATH}/lat"),
     ("TEXT_PATH", "", "${OUTPUT_PATH}/text"),
-    ("PCM_PATH", "", "${LANGUAGE_PACK_PATH}/${BABEL_ID}_resampled"),
+    ("PCM_PATH", "", "${LANGUAGE_PACK_PATH}/${BABEL_ID}_${LANGUAGE_NAME}"),
     ("DATABASE_FILE", "", "${IBM_MODELS}/${BABEL_ID}/${PACK}/segment/*db"),
     ("CMS_PATH", "", "${IBM_MODELS}/${BABEL_ID}/${PACK}/adapt/cms"),
     ("FMLLR_PATH", "", "${IBM_MODELS}/${BABEL_ID}/${PACK}/adapt/fmllr"),
@@ -248,7 +247,7 @@ for language, properties in env["LANGUAGES"].iteritems():
     packs = {}
     #resampled_pack = env.Resample("work/resampled_packs/${BABEL_ID}.tar", ["${LANGUAGE_PACK_PATH}/${BABEL_ID}.tar", "data/down6x.filt"])
     #stripped_pack = env.FilterTar("work/stripped_packs/${BABEL_ID}.tar", ["${LANGUAGE_PACK_PATH}/${BABEL_ID}.tar", env.Value(r".*transcription.*")])
-    stripped_pack = env.FilterTar("work/stripped_packs/${BABEL_ID}.tgz", ["${LANGUAGE_PACK_PATH}/${BABEL_ID}_resampled.tgz", env.Value(r".*transcription.*")])
+    stripped_pack = env.FilterTar("work/stripped_packs/${BABEL_ID}.tgz", ["${LANGUAGE_PACK_PATH}/${BABEL_ID}_${LANGUAGE_NAME}.tgz", env.Value(r".*transcription.*")])
     
     if "FLP" in properties.get("PACKS", []):
         packs["FLP"] = env.CollectText("work/texts/${LANGUAGE_NAME}_FLP.txt",

@@ -337,8 +337,9 @@ def asr_test(target, source, env):
     else:
         return "Don't know how to run ASR with these models!"
 
-    with meta_open(target[0].rstr(), "w") as ctm_ofd, tarfile.open(target[1].rstr(), "w|gz") as tf_ofd, temp_file() as temp_fname:
+    with meta_open(target[0].rstr(), "w") as ctm_ofd, tarfile.open(target[1].rstr(), "w|gz") as tf_ofd, temp_file() as temp_fname:        
         for utt in db:
+
             key    = utt + ' ' + os.path.splitext(db.getFile(utt))[0]
             if mlp:
                 fe.end.eval(utt)
@@ -394,7 +395,7 @@ def asr_test(target, source, env):
 def run_asr(env, root_path, vocabulary, pronunciations, language_model, *args, **kw):
     env.Replace(ROOT_PATH=root_path)
     if env["RUN_ASR"]:
-        dnet = env.ASRConstruct("${ROOT_PATH}/dnet.bin.gz", [vocabulary, pronunciations, language_model], PACK=env["PACK"], BABEL_ID=env["BABEL_ID"])    
+        dnet = env.ASRConstruct("${ROOT_PATH}/dnet.bin.gz", [vocabulary, pronunciations, language_model], PACK=env["PACK"], BABEL_ID=env["BABEL_ID"], LANGUAGE_NAME=env["LANGUAGE_NAME"])    
         tests = [dnet]
         if env["TEST_ASR"]:
             to = 1
@@ -403,7 +404,7 @@ def run_asr(env, root_path, vocabulary, pronunciations, language_model, *args, *
         for i in range(to):
             tests.append(env.ASRTest(["${ROOT_PATH}/transcripts_${JOB_ID + 1}_of_${JOB_COUNT}.ctm.gz",
                                       "${ROOT_PATH}/confusion_networks_${JOB_ID + 1}_of_${JOB_COUNT}.tgz"],
-                                     [dnet, vocabulary, pronunciations, language_model], PACK=env["PACK"], BABEL_ID=env["BABEL_ID"], JOB_ID=i))
+                                     [dnet, vocabulary, pronunciations, language_model], PACK=env["PACK"], BABEL_ID=env["BABEL_ID"], JOB_ID=i, LANGUAGE_NAME=env["LANGUAGE_NAME"]))
     else:
         return [None] + [[None, x] for x in env.Glob("${ROOT_PATH}/*_[0-9]*_of_[0-9]*.tgz")]
     return tests

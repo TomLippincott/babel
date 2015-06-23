@@ -299,17 +299,19 @@ def run_kws(env, experiment_path, asr_output, vocabulary, pronunciations, keywor
     )
 
     phone_symbols = env.AddPhone(pjoin(experiment_path, "p2p_workaround", "phones.sym"), [phone_symbols, Value(["u0071", "HES01", "HES02"])])
-    return None    
+
     #p2p_fst = env.PhonesToPhones(pjoin(experiment_path, "p2p_workaround", "P2P.fst"), p2p_file)
     p2p_fsm = env.PhonesToPhones(pjoin(experiment_path, "P2P.fsm"), [p2p_file, phone_symbols])
 
     p2p_unsorted = env.FSTCompile(pjoin(experiment_path, "P2P_unsorted.fst"), [phone_symbols, phone_symbols, p2p_fsm])
+
     p2p_fst = env.FSTArcSort(pjoin(experiment_path, "P2P.fst"), [p2p_unsorted, Value("ilabel")])
 
-    p2w_fst = env.File("tokpisin_cn_kws/data/OFST/phones2words.fst")
-    w2p_fst = env.File("tokpisin_cn_kws/data/OFST/words2phones.fst")
-    p2p_fst = env.File("tokpisin_cn_kws/data/OFST/P2P.fst")
-    word_symbols = env.File("tokpisin_cn_kws/data/OFST/words.sym")
+    # FIX!
+    #p2w_fst = env.File("tokpisin_cn_kws/data/OFST/phones2words.fst")
+    #w2p_fst = env.File("tokpisin_cn_kws/data/OFST/words2phones.fst")
+    #p2p_fst = env.File("tokpisin_cn_kws/data/OFST/P2P.fst")
+    #word_symbols = env.File("tokpisin_cn_kws/data/OFST/words.sym")
     
     #p2p_fst = env.PhonesToPhones(pjoin(experiment_path, "P2P.fst"), phone_symbols)
     #return None
@@ -327,15 +329,14 @@ def run_kws(env, experiment_path, asr_output, vocabulary, pronunciations, keywor
     iv_queries = []
     for i, terms in enumerate(env.SplitList([pjoin(experiment_path, "iv_queries_%d.txt" % i) for i in range(10)], iv_query_terms)):
         iv_queries.append(env.CreateQueries(pjoin(experiment_path, "iv_query_fsts_%d.tgz" % i), [terms, word_symbols, p2p_fst, w2p_fst, p2w_fst], NBESTP2P=2000))
-
+    
     oov_queries = env.CreateQueries(pjoin(experiment_path, "oov_queries.tgz"), [oov_query_terms, word_symbols, p2p_fst, w2p_fst, p2w_fst], NBESTP2P=2)
 
-
     #iv_queries = env.CreateQueryFSTs(pjoin(experiment_path, "iv_queries", "list.txt"), 
-    #                                 [iv_query_terms, p2p_fst, vocabulary_symbols, vocabulary], I=1, n=1)
+    #                                [iv_query_terms, p2p_fst, vocabulary_symbols, vocabulary], I=1, n=1)
 
     #oov_queries = env.CreateQueryFSTs(pjoin(experiment_path, "oov_queries", "list.txt"), 
-    #                                  [oov_query_terms, p2p_fst, vocabulary_symbols, vocabulary], I=1, n=1, NBESTP2P=2)
+    #                                 [oov_query_terms, p2p_fst, vocabulary_symbols, vocabulary], I=1, n=1, NBESTP2P=2)
 
     #iv_queries = env.FileList(pjoin(experiment_path, "iv_queries", "list2.txt"), iv_queries)
     #oov_queries = env.FileList(pjoin(experiment_path, "oov_queries", "list2.txt"), oov_queries)
@@ -362,9 +363,9 @@ def run_kws(env, experiment_path, asr_output, vocabulary, pronunciations, keywor
         index_fst = env.FSTCompile(pjoin(experiment_path, "index-%d.fst" % (i)), [word_symbols, sym, index])
         sorted_index_fst = env.FSTArcSort(pjoin(experiment_path, "index-%d-sorted.fst" % (i)), [index_fst[0], env.Value("ilabel")])
         
-        ivs.append(env.PerformSearch(pjoin(experiment_path, "IV_results", "result.%d.txt" % i), [sorted_index_fst, sym, bsym, word_symbols, iv_queries]))
-        continue
-        oovs.append(env.PerformSearch(pjoin(experiment_path, "OOV_results", "result.%d.txt" % i), [sorted_index_fst, sym, bsym, word_symbols, oov_queries]))
+        #ivs.append(env.PerformSearch(pjoin(experiment_path, "IV_results", "result.%d.txt" % i), [sorted_index_fst, sym, bsym, word_symbols, iv_queries]))
+        #continue
+        #oovs.append(env.PerformSearch(pjoin(experiment_path, "OOV_results", "result.%d.txt" % i), [sorted_index_fst, sym, bsym, word_symbols, oov_queries]))
 
     return None
         
@@ -397,7 +398,7 @@ def create_queries(target, source, env):
 
             pid = subprocess.Popen(shlex.split(env.subst("${OPENFST_BINARIES}/fstcompile --acceptor -isymbols=${SOURCE}", source=word_symbols)),
                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-            text, error = pid.communicate(text)
+            text, error = pid.communicate(text.encode("utf-8"))
             if len(keyword) > env.get("MINPHLENGTH") and env.get("NBESTP2P") > 0:
                 pid = subprocess.Popen(shlex.split(env.subst("${OPENFST_BINARIES}/fstcompose - ${SOURCE}", source=w2p_fst)), stdin=subprocess.PIPE, stdout=subprocess.PIPE)
                 text, error = pid.communicate(text)
