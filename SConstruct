@@ -196,7 +196,8 @@ def dummy_segmentation(target, source, env):
     with meta_open(source[0].rstr()) as ifd:
         for line in ifd:
             word, count = line.strip().split()
-            words.add(word)
+            if "_" not in word:
+                words.add(word)
     with meta_open(target[0].rstr(), "w") as ofd:
         ofd.write("\n".join(words) + "\n")            
     return None

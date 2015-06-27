@@ -26,10 +26,6 @@ import bisect
 from babel import ProbabilityList, Arpabo, Pronunciations, Vocabulary, FrequencyList
 from common_tools import Probability, temp_file, temp_dir, meta_open
 from os.path import join as pjoin
-#import matplotlib
-#matplotlib.use("Agg")
-#from matplotlib import pyplot
-#import numpy
 import sys
 import user
 import dsearch
@@ -339,7 +335,6 @@ def asr_test(target, source, env):
 
     with meta_open(target[0].rstr(), "w") as ctm_ofd, tarfile.open(target[1].rstr(), "w|gz") as tf_ofd, temp_file() as temp_fname:        
         for utt in db:
-
             key    = utt + ' ' + os.path.splitext(db.getFile(utt))[0]
             if mlp:
                 fe.end.eval(utt)
