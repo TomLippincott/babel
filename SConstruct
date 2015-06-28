@@ -286,6 +286,12 @@ for language, properties in env["LANGUAGES"].iteritems():
             segmentations["dummy"] = env.DummySegmentation("work/segmentations/${LANGUAGE_NAME}/${PACK}/dummy.txt", word_list)
             morfessor, morfessor_model = env.TrainMorfessor(["work/morfessor/${LANGUAGE_NAME}_${PACK}.txt", "work/morfessor/${LANGUAGE_NAME}_${PACK}.model"], word_list)
             segmentations["morfessor"] = morfessor
+            for model_name in ["prefix_suffix"]:
+                ag = env.AdaptorGrammarBabelExperiment("work/adaptor_grammars/${LANGUAGE_NAME}_${PACK}_${MODEL_NAME}/",
+                                                       model_name,
+                                                       properties.get("NON_ACOUSTIC_GRAPHEMES", []),
+                                                       word_list)
+                segmentations[model_name] = ag
             
             for model_name, segmentation in segmentations.iteritems():
                 env.Replace(MODEL=model_name)

@@ -894,29 +894,32 @@ def morfessor_babel_experiment(env, target_base, non_acoustic, training_name, wo
                                                NON_ACOUSTIC_GRAPHEMES=non_acoustic)
     return None
 
-def adaptor_grammar_babel_experiment(env, target_base, model_name, non_acoustic, word_lists=[]):
-    with meta_open(word_lists[0].rstr()) as ifd:
-        count = len([x for x in ifd])
+def adaptor_grammar_babel_experiment(env, target_path, model_name, non_acoustic, word_lists=[]):
     segmented = []
-    if env.get("RUN_SEGMENTATION", True) and count < 20000:
-        env.Replace(TARGET_BASE=target_base)
-        env.Replace(MODEL_NAME=model_name)
-        training_words = word_lists[0]
-        characters = env.CharacterProductions("work/adaptor_grammar/${TRAINING_NAME}_${MODEL_NAME}_characters.txt", word_lists,
-                                              NON_ACOUSTIC_GRAPHEMES=non_acoustic)
-        pycfg_data = env.MorphologyData("work/adaptor_grammar/${TRAINING_NAME}_${MODEL_NAME}_data.txt", training_words, NON_ACOUSTIC_GRAPHEMES=non_acoustic)
-        cfg = env.ComposeGrammars("work/adaptor_grammar/${TRAINING_NAME}_${MODEL_NAME}_cfg.txt", ["data/grammar_templates/simple_${MODEL_NAME}.txt", characters])
-        segmentations, grammar, trace = env.RunPYCFG(["work/adaptor_grammar/${TRAINING_NAME}_${MODEL_NAME}_output.txt",
-                                                      "work/adaptor_grammar/${TRAINING_NAME}_${MODEL_NAME}_grammar.txt",
-                                                      "work/adaptor_grammar/${TRAINING_NAME}_${MODEL_NAME}_trace.txt",
-                                                  ],
-                                                     [cfg, pycfg_data])
-        training_segmentations = env.NormalizePYCFGOutput("work/adaptor_grammar/${TRAINING_NAME}_${MODEL_NAME}.txt", segmentations)
-        return None
-        segmented = [training_segmentations]
-        for keyword_list in Flatten(word_lists[1:]):
-            kw_data = env.MorphologyData("${SOURCE.base}_${TRAINING_NAME}_${MODEL_NAME}.txt", keyword_list, NON_ACOUSTIC_GRAPHEMES=non_acoustic)
-            segmented.append(env.ApplyAdaptorGrammar("${SOURCES[1].base}_${TRAINING_NAME}_${MODEL_NAME}_segmented.txt", [grammar, kw_data[0]]))
+    env.Replace(MODEL_NAME=model_name)
+    env.Replace(TARGET_PATH=target_path)
+    #target_path = env.subst(target_path)
+    #target_base = os.path.splitext(target)[0]
+    #target_path = os.path.dirname(target)
+    #print target, target_base, target_path
+
+    #env.Replace(TARGET_BASE=target_base)
+
+    training_words = word_lists[0]
+    characters = env.CharacterProductions("${TARGET_PATH}/characters.txt", word_lists,
+                                          NON_ACOUSTIC_GRAPHEMES=non_acoustic)
+    pycfg_data = env.MorphologyData("${TARGET_PATH}/data.txt", training_words, NON_ACOUSTIC_GRAPHEMES=non_acoustic)
+    cfg = env.ComposeGrammars("${TARGET_PATH}/cfg.txt", ["data/grammar_templates/simple_${MODEL_NAME}.txt", characters])
+    segmentations, grammar, trace = env.RunPYCFG(["${TARGET_PATH}/output.txt",
+                                                  "${TARGET_PATH}/grammar.txt",
+                                                  "${TARGET_PATH}/trace.txt",
+                                              ],
+                                                 [cfg, pycfg_data])
+    training_segmentations = env.NormalizePYCFGOutput("${TARGET_PATH}/output_normalized.txt", segmentations)
+    segmented = [training_segmentations]
+    #for keyword_list in Flatten(word_lists[1:]):
+    #    kw_data = env.MorphologyData("${SOURCE.base}_${TRAINING_NAME}_${MODEL_NAME}.txt", keyword_list, NON_ACOUSTIC_GRAPHEMES=non_acoustic)
+    #    segmented.append(env.ApplyAdaptorGrammar("${SOURCES[1].base}_${TRAINING_NAME}_${MODEL_NAME}_segmented.txt", [grammar, kw_data[0]]))
             
     return segmented
 
