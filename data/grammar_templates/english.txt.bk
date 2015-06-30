@@ -1,0 +1,16 @@
+0 1 Word --> ^^^ Stem Suffix
+
+0 1 Stem --> KnownStem
+0 1 Stem --> UnknownStem
+UnknownStem --> StemChars
+
+0 1 Suffix --> $$$
+0 1 Suffix --> KnownSuffix $$$
+0 1 Suffix --> UnknownSuffix $$$
+UnknownSuffix --> SuffixChars
+
+0 1 StemChars --> Char
+0 1 StemChars --> Char StemChars
+
+0 1 SuffixChars --> Char
+0 1 SuffixChars --> Char SuffixChars
