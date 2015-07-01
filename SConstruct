@@ -96,7 +96,7 @@ vars.AddVariables(
     #("SCORE_SCRIPT", "", None),
 
     #("LORELEI_TOOLS", "", "${BASE_PATH}/lorelei_tools"),
-    ("PYCFG_PATH", "Mark Johnson's tool for training Adaptor Grammars", "${BASE_PATH}/py-cfg"),
+    ("PYCFG_PATH", "Mark Johnson's tool for training Adaptor Grammars", "${BASE_PATH}/local/bin"),
     
     # these variables all have default definitions in terms of the previous, but may be overridden as needed
 
@@ -139,7 +139,7 @@ vars.AddVariables(
     ("PRINT_EPS_THRESH", "", "1e-03"),
     ("PRUNE", "", 10),
     ("RESCORE_BEAM", "", 1.5),
-    ("LOWER_CASE", "", False),
+    ("LOWER_CASE", "Whether the language should, in general, be converted to lower case", False),
     ("CN_KWS_SCRIPTS", "", "${BASE_PATH}/lorelei_svn/tools/cn-kws/scripts"),
     ("JAVA_NORM", "", "${BABEL_REPO}/KWS/examples/babel-dryrun/javabin"),
     ("SCLITE_BINARY", "", "${BASE_PATH}/sctk-2.4.5/bin/sclite"),
