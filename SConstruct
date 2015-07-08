@@ -16,15 +16,8 @@ import babel_tools
 import asr_tools
 import kws_tools
 
-# imports from the "python" repository
-#import scala_tools
+# imports from the "python" git repository
 import morfessor_tools
-#import emma_tools
-#import trmorph_tools
-#import sfst_tools
-#import evaluation_tools
-#import almor_tools
-#import mila_tools
 import pycfg_tools
 import torque_tools
 import vocabulary_tools
@@ -35,14 +28,17 @@ from torque_tools import make_torque_builder
 import scons_tools
 from common_tools import meta_open
 
+
 # Everything is configured by variables described below, where you can see (NAME, HELP_TEXT, DEFAULT_VALUE)
 # These shouldn't be edited here, but rather overridden in the custom.py file
+# Many variables point to specific files, but sometimes the file naming we receive is a bit strange, and
+# instead the variable will be a regular expression that will (hopefully) match the needed file
 vars = Variables("custom.py")
 vars.AddVariables(
 
     # these variables are just cosmetic or for debugging purposes and don't affect the actual build process
     ("OUTPUT_WIDTH", "Controls the maximum line width SCons will print before truncating", 130),
-    BoolVariable("DEBUG", "Not really used, but should control debugging output", True),
+    BoolVariable("DEBUG", "Only run the first job in a given parallel set (e.g. to make sure everything works before using Torque)", False),
     ("LOG_LEVEL", "How much information to display while building", logging.INFO),
     ("LOG_DESTINATION", "Where to display log output", sys.stdout),
 
@@ -65,9 +61,8 @@ vars.AddVariables(
     ("ANNEAL_ITERATIONS", "Number of iterations over which to decrease annealing value", 500),
     
     # these variables determine how parallelism is exploited    
-    ("LONG_RUNNING", "Names of builders that should be considered for parallel execution", []),
+    ("LONG_RUNNING", "Builders that should be considered for parallel execution, in tuples of form (name, #targets, #sources, combine)", []),
     ("JOB_COUNT", "How many jobs to split a single experiment into", 1),
-    ("TEST_ASR", "Just run the first parallel job, for testing purposes", False),
     BoolVariable("THREADED_SUBMIT_NODE", "Run parallel jobs using multiple cores", False),
     BoolVariable("TORQUE_SUBMIT_NODE", "Run parallel jobs using Torque (e.g. invoking scons on yetisubmit.cc.columbia.edu)", False),
 
@@ -88,28 +83,16 @@ vars.AddVariables(
     ("IBM_MODELS", "Acoustic models and related files provided by IBM", "${BASE_PATH}/ibm_models"),
     ("LORELEI_SVN", "Checkout of SVN repository hosted on lorelei", "${BASE_PATH}/lorelei_svn"),
     ("ATTILA_PATH", "IBM's ASR system", "${BASE_PATH}/attila"),
-    ("F4DE_PATH", "NIST software for evaluating keyword search output", None),
+    ("F4DE_PATH", "NIST software for evaluating keyword search output", "${BASE_PATH}/lorelei_resources/F4DE"),
     ("INDUSDB_PATH", "Babel resource with keyword lists, transcripts, segmentations, and so forth", "${BASE_PATH}/lorelei_resources/IndusDB"),
-    #("SEQUITUR_PATH", "Python library for aligning sequences (e.g. graphemes and phonemes)", "${BASE"),
     ("LIBRARY_OVERLAY", "", "${OVERLAY}/lib:${OVERLAY}/lib64:${LORELEI_TOOLS}/boost_1_49_0/stage/lib/"),
-    #("PYTHON_INTERPRETER", "", None),
-    #("SCORE_SCRIPT", "", None),
-
-    #("LORELEI_TOOLS", "", "${BASE_PATH}/lorelei_tools"),
     ("PYCFG_PATH", "Mark Johnson's tool for training Adaptor Grammars", "${BASE_PATH}/local/bin"),
     
     # these variables all have default definitions in terms of the previous, but may be overridden as needed
-
-    #("BABEL_RESOURCES", "", "${BASE_PATH}/lorelei_resources"),
-    #("PYTHON", "", "/usr/bin/python"),
-    #("PERL", "", "/usr/bin/perl"),    
-    #("PERL_LIBRARIES", "", os.environ.get("PERL5LIB", "")),
     ("G2P", "", "g2p.py"),
-    ("G2P_PATH", "", "/home/tom/local/python/lib/python2.7/site-packages/"),
-    ("BABEL_BIN_PATH", "", "${LORELEI_SVN}/tools/kws/bin64"),
-    ("BABEL_SCRIPT_PATH", "", "${LORELEI_SVN}/tools/kws/scripts"),
-    #("F4DE_PATH", "", "${BABEL_RESOURCES}/F4DE"),
-    #("INDUS_DB", "", "${BABEL_RESOURCES}/IndusDB"),
+    ("BABEL_BIN_PATH", "Location of IBM's compiled executables", "${LORELEI_SVN}/tools/kws/bin64"),
+    ("BABEL_SCRIPT_PATH", "Location of IBM's KWS scripts", "${LORELEI_SVN}/tools/kws/scripts"),
+    ("BABEL_CN_SCRIPT_PATH", "Location of IBM's confusion network KWS scripts", "${LORELEI_SVN}/tools/cn-kws/scripts"),
     ("WRD2PHLATTICE", "", "${BABEL_BIN_PATH}/wrd2phlattice"),
     ("BUILDINDEX", "", "${BABEL_BIN_PATH}/buildindex"),
     ("BUILDPADFST", "", "${BABEL_BIN_PATH}/buildpadfst"),
@@ -130,10 +113,11 @@ vars.AddVariables(
     ("BABELSCORER", "", "${F4DE_PATH}/KWSEval/tools/KWSEval/KWSEval.pl"),
 
     # KWS-related variables
-    ("TRANSPARENT", "", "'<s>,</s>,~SIL,<epsilon>'"),
+    ("TRANSPARENT", "Symbols that don't correspond to an actual sound", "'<s>,</s>,~SIL,<epsilon>'"),
     ("ADD_DELETE", "", 5),
     ("ADD_INSERT", "", 5),
-    ("NBESTP2P", "", 2000),
+    ("NBESTP2P_IV", "How many expanded terms per IV query term according to P2P similarities", 2000),
+    ("NBESTP2P_OOV", "How many expanded terms per OOV query term according to P2P similarities", 20000),
     ("MINPHLENGTH", "", 2),
     ("PRINT_WORDS_THRESH", "", "1e-10"),
     ("PRINT_EPS_THRESH", "", "1e-03"),
@@ -142,10 +126,10 @@ vars.AddVariables(
     ("LOWER_CASE", "Whether the language should, in general, be converted to lower case", False),
     ("CN_KWS_SCRIPTS", "", "${BASE_PATH}/lorelei_svn/tools/cn-kws/scripts"),
     ("JAVA_NORM", "", "${BABEL_REPO}/KWS/examples/babel-dryrun/javabin"),
-    ("SCLITE_BINARY", "", "${BASE_PATH}/sctk-2.4.5/bin/sclite"),
+    ("SCLITE_BINARY", "", "${BASE_PATH}/sctk-2.4.5/bin/sclite"),    
     
     # ASR-related variables
-    ("MODEL_PATH", "", "${IBM_MODELS}/${BABEL_ID}/${PACK}/models"),
+    ("MODEL_PATH", "Location of acoustic models provided by IBM", "${IBM_MODELS}/${BABEL_ID}/${PACK}/models"),
     ("PHONE_FILE", "", "${MODEL_PATH}/pnsp"),
     ("PHONE_SET_FILE", "", "${MODEL_PATH}/phonesset"),
     ("TAGS_FILE", "", "${MODEL_PATH}/tags"),
@@ -153,10 +137,10 @@ vars.AddVariables(
     ("MLP_FILE", "", "${MODEL_PATH}/*.mlp"),
     ("TOPO_FILE", "", "${MODEL_PATH}/topo.*"),
     ("TOPO_TREE_FILE", "", "${MODEL_PATH}/topotree"),
-    ("PRONUNCIATIONS_FILE", "", "${MODEL_PATH}/dict.test"),
-    ("VOCABULARY_FILE", "", "${MODEL_PATH}/vocab"),
-    ("LANGUAGE_MODEL_FILE", "", "${MODEL_PATH}/lm.2gm.arpabo.gz"),
-    ("SAMPLING_RATE", "", 8000),
+    ("PRONUNCIATIONS_FILE", "Pronunciations shipped with IBM's acoustic models", "${MODEL_PATH}/dict.test"),
+    ("VOCABULARY_FILE", "Vocabulary shipped with IBM's acoustic models", "${MODEL_PATH}/vocab"),
+    ("LANGUAGE_MODEL_FILE", "Language model shipped with IBM's acoustic models", "${MODEL_PATH}/lm.2gm.arpabo.gz"),
+    ("SAMPLING_RATE", "Sample rate of all audio files", 8000),
     ("FEATURE_TYPE", "", "plp"),
     ("MEL_FILE", "", "${MODEL_PATH}/mel"),
     ("LDA_FILE", "", "${MODEL_PATH}/30.mat"),
@@ -173,9 +157,9 @@ vars.AddVariables(
     ("CMS_PATH", "", "${IBM_MODELS}/${BABEL_ID}/${PACK}/adapt/cms"),
     ("FMLLR_PATH", "", "${IBM_MODELS}/${BABEL_ID}/${PACK}/adapt/fmllr"),
     ("ECF_FILE", "", "${INDUSDB_PATH}/*babel${BABEL_ID}*conv-dev/*.scoring.ecf.xml"),
-    ("DEV_KEYWORD_FILE", "", "${INDUSDB_PATH}/*babel${BABEL_ID}*conv-dev.kwlist2.xml"),
-    ("EVAL_KEYWORD_FILE", "", "data/eval_keyword_lists/*babel${BABEL_ID}*conv-eval.kwlist*.xml"),
-    ("RTTM_FILE", "", "${INDUSDB_PATH}/*babel${BABEL_ID}*conv-dev/*mit*rttm"),
+    ("DEV_KEYWORD_FILE", "File pattern for development keyword list", "${INDUSDB_PATH}/*babel${BABEL_ID}*conv-dev.kwlist.xml"),
+    ("EVAL_KEYWORD_FILE", "File pattern for evaluation keyword list", "data/eval_keyword_lists/*babel${BABEL_ID}*conv-eval.kwlist*.xml"),
+    ("RTTM_FILE", "File pattern for the MIT audio segmentation", "${INDUSDB_PATH}/*babel${BABEL_ID}*conv-dev/*mit*rttm"),
 )
 
 # initialize logging system
@@ -231,6 +215,9 @@ env['PRINT_CMD_LINE_FUNC'] = print_cmd_line
 # use time stamps to determine if a target needs to be rebuilt
 env.Decider("timestamp-newer")
 
+# aggregate targets by language, ASR/KWS, pack, and morphology (for more flexible selective building)
+pseudo_targets = {}
+
 #
 # Begin defining the actual experiments and dependencies
 #
@@ -246,8 +233,6 @@ for language, properties in env["LANGUAGES"].iteritems():
     env.Replace(FORCE_SPLIT=["-"])
     
     packs = {}
-    #resampled_pack = env.Resample("work/resampled_packs/${BABEL_ID}.tar", ["${LANGUAGE_PACK_PATH}/${BABEL_ID}.tar", "data/down6x.filt"])
-    #stripped_pack = env.FilterTar("work/stripped_packs/${BABEL_ID}.tar", ["${LANGUAGE_PACK_PATH}/${BABEL_ID}.tar", env.Value(r".*transcription.*")])
     stripped_pack = env.FilterTar("work/stripped_packs/${BABEL_ID}.tgz", ["${LANGUAGE_PACK_PATH}/${BABEL_ID}_${LANGUAGE_NAME}.tgz", env.Value(r".*transcription.*")])
     
     if "FLP" in properties.get("PACKS", []):
@@ -298,6 +283,7 @@ for language, properties in env["LANGUAGES"].iteritems():
                 segmented_pronunciations_training, morphs = env.SegmentedPronunciations(["work/pronunciations/${LANGUAGE_NAME}_${PACK}_${MODEL}_segmented.txt",
                                                                                          "work/pronunciations/${LANGUAGE_NAME}_${PACK}_${MODEL}_morphs.txt"],
                                                                                         [baseline_pronunciations, segmentation])
+
                 if properties.get("GRAPHEMIC", False):
                     morph_pronunciations = env.GraphemicPronunciations("work/pronunciations/${LANGUAGE_NAME}_${PACK}_${MODEL}_morph_pronunciations.txt", morphs)
                 else:
@@ -309,10 +295,16 @@ for language, properties in env["LANGUAGES"].iteritems():
                     [morph_pronunciations, baseline_pronunciations, env.Value(properties.get("GRAPHEMIC", False))])
 
                 segmented_training_text = env.SegmentTranscripts("work/segmented_training/${LANGUAGE_NAME}_${PACK}_${MODEL}.txt", [data, segmentation])
+
                 segmented_language_model = env.TrainLanguageModel("work/asr_input/${LANGUAGE_NAME}_${PACK}_${MODEL}_languagemodel_segmented.arpabo.gz",
                                                                   [segmented_training_text, Value(2)])
+
                 segmented_asr_output = env.RunASR("work/asr_experiments/${LANGUAGE_NAME}/${PACK}/${MODEL}",
                                                   segmented_vocabulary,
                                                   segmented_pronunciations,
                                                   segmented_language_model)
+
                 segmented_kws_output = env.RunKWS("work/kws_experiments/${LANGUAGE_NAME}/${PACK}/${MODEL}", [x[1] for x in segmented_asr_output[1:]], segmented_vocabulary, segmented_pronunciations, env.Glob("${DEV_KEYWORD_FILE}"))
+
+                #cascaded_kws_output = env.CascadedScore("work/kws_experiments/${LANGUAGE_NAME}/${PACK}/${MODEL}/cascaded_score.txt",
+                #                                        [baseline_kws_output, segmented_kws_output])
