@@ -1,5 +1,6 @@
 # BASE_PATH = "/vega/ccls/projects/babel"
 # JOB_COUNT = 40
+# DEBUG = False
 # THREADED_SUBMIT_NODE = False
 # TORQUE_SUBMIT_NODE = True
 # LANGUAGES = {
@@ -51,7 +52,7 @@
 #     #"vietnamese" : {
 #     #    "BABEL_ID" : 107,
 #     #},
-#     "hatian_creole" : {
+#     "haitian_creole" : {
 #         "BABEL_ID" : 201,
 #         "PACKS" : ["FLP", "LLP"],
 #     },
@@ -112,7 +113,7 @@
 #     "zulu" : LANGUAGES["zulu"],
 #     "tagalog" : LANGUAGES["tagalog"],
 #     "assamese" : LANGUAGES["assamese"],
-#     "hatian_creole" : LANGUAGES["hatian_creole"],
+#     "haitian_creole" : LANGUAGES["haitian_creole"],
 #     "swahili" : LANGUAGES["swahili"],
 #     "tok_pisin" : LANGUAGES["tok_pisin"],
 #     "kurmanji" : LANGUAGES["kurmanji"],

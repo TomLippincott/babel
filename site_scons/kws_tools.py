@@ -424,6 +424,7 @@ def run_kws(env, experiment_path, asr_output, vocabulary, pronunciations, keywor
     devinfo = env.File("${MODEL_PATH}/devinfo")
     p2p_file = env.File("${P2P_FILE}")
     dict_oov = env.Glob("${IBM_MODELS}/${BABEL_ID}/${PACK}/kws-resources/*/dict.OOV.v2p")
+    dict_test = env.Glob("${IBM_MODELS}/${BABEL_ID}/${PACK}/kws-resources/*/dict.test.gz")
     expid = os.path.basename(ecf_file.rstr()).split("_")[0]
 
     iv_query_terms, oov_query_terms, word_to_word_fst = env.QueryFiles([pjoin(experiment_path, x) for x in ["iv_queries.txt", 
@@ -436,11 +437,6 @@ def run_kws(env, experiment_path, asr_output, vocabulary, pronunciations, keywor
     oov_pronunciations_nobreak = env.OOVPronunciations(pjoin(experiment_path, "oov_pronunciations_nobreak.txt"), [pronunciations, oov_query_terms])
     oov_pronunciations = env.AddWordBreaks(pjoin(experiment_path, "oov_pronunciations.txt"), oov_pronunciations_nobreak)
 
-    # fst_header, phone_symbols, word_symbols, p2w_fsm, p2w_fst, w2p_fsm, w2p_fst = env.WordsToPhones(
-    #     [pjoin(experiment_path, x) for x in ["fst_header", "phones.sym", "words.sym", "phones2words.fsm", "phones2words.fst", "words2phones.fsm", "words2phones.fst"]],
-    #     [pronunciations, oov_pronunciations, dict_oov]
-    # )
-
     fst_header, phone_symbols, word_symbols, w2p_fsm, w2p_fst = env.WordsToPhones(
         [pjoin(experiment_path, x) for x in ["fst_header", "phones.sym", "words.sym", "words2phones.fsm", "words2phones.fst"]],
         [pronunciations, oov_pronunciations, dict_oov]
@@ -448,33 +444,17 @@ def run_kws(env, experiment_path, asr_output, vocabulary, pronunciations, keywor
 
     phone_symbols = env.AddPhone(pjoin(experiment_path, "p2p_workaround", "phones.sym"), [phone_symbols, env.Value(["u0071", "HES01", "HES02"])])
 
-    #p2p_fst = env.PhonesToPhones(pjoin(experiment_path, "p2p_workaround", "P2P.fst"), p2p_file)
-
     p2p_fsm = env.PhonesToPhones(pjoin(experiment_path, "P2P.fsm"), [p2p_file, phone_symbols])
 
     p2p_unsorted = env.FSTCompile(pjoin(experiment_path, "P2P_unsorted.fst"), [phone_symbols, phone_symbols, p2p_fsm])
 
     p2p_fst = env.FSTArcSort(pjoin(experiment_path, "P2P.fst"), [p2p_unsorted, env.Value("ilabel")])
     
-    #p2p_fst = env.PhonesToPhones(pjoin(experiment_path, "P2P.fst"), phone_symbols)
-    
     wordpron = env.WordPronounceSymTable(pjoin(experiment_path, "in_vocabulary_symbol_table.txt"),
                                          pronunciations)
     
     vocabulary_symbols = env.CleanPronounceSymTable(pjoin(experiment_path, "cleaned_in_vocabulary_symbol_table.txt"),
                                                     wordpron)
-    
-    #p2p_fst = env.FSTCompile(pjoin(experiment_path, "p2p_fst.txt"),
-    #                         [vocabulary_symbols, vocabulary_symbols, word_to_word_fst])
-    
-    # FIX!
-    #temp = "/home/tom/u/guest3/bootcamp.20150210/201-dev/FullLP/kws"
-    #p2w_fst = env.File("%s/data/OFST/phones2words.fst" % temp)
-    #w2p_fst = env.File("%s/data/OFST/words2phones.fst" % temp)
-    #p2p_fst = env.File("%s/data/OFST/P2P.fst" % temp)
-    #word_symbols = env.File("%s/data/OFST/words.sym" % temp)
-    #phone_symbols = env.File("%s/data/OFST/phones.sym" % temp)
-    #index_symbols = env.File("%s/index.word/index.part1.sym" % temp)
     
     iv_queries = []
     
@@ -497,7 +477,7 @@ def run_kws(env, experiment_path, asr_output, vocabulary, pronunciations, keywor
                                             [index, keyword_symbols])
         
         expanded_index = env.ExpandPhoneIndex(pjoin(experiment_path, "expanded_index_%d_of_%d.fsm" % (i, j)),
-                                              [index, "dict.gz"])
+                                              [index, dict_test])
                                                                                                                #pronunciations])
         expanded_index_symbols, ebsym = env.IndexToSymbolTables([pjoin(experiment_path, "expanded_index_%d_of_%d_sorted.%s" % (i, j, x)) for x in ["sym", "bsym"]],
                                             [expanded_index, keyword_symbols])
@@ -554,7 +534,6 @@ def TOOLS_ADD(env):
         "KeywordXMLToText" : Builder(action=keyword_xml_to_text),
         "KeywordSymbols" : Builder(action="perl ${CN_KWS_SCRIPTS}/kwdsym.pl ${SOURCES} ${TARGET.get_dir()} 2> /dev/null"),
         "OOVPronunciations" : Builder(action=oov_pronunciations),
-        #"WordsToPhones" : Builder(action="perl ${CN_KWS_SCRIPTS}/create_wp.pl ${SOURCES[0]} ${SOURCES[1]} ${SOURCES[2]} ${TARGET.get_dir()} ${TRANSPARENT} 2> /dev/null"),
         "WordsToPhones" : Builder(action="perl bin/create_wp.more.pl ${SOURCES[0]} ${SOURCES[1]} ${SOURCES[2]} ${TARGET.get_dir()} ${TRANSPARENT} 2> /dev/null"),
         "PhonesToPhones" : Builder(action=create_p2p),
         "ExpandPhoneIndex" : Builder(action=expand_phone_index),

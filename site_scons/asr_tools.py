@@ -393,7 +393,7 @@ def run_asr(env, root_path, vocabulary, pronunciations, language_model, *args, *
     if env["RUN_ASR"]:
         dnet = env.ASRConstruct("${ROOT_PATH}/dnet.bin.gz", [vocabulary, pronunciations, language_model], PACK=env["PACK"], BABEL_ID=env["BABEL_ID"], LANGUAGE_NAME=env["LANGUAGE_NAME"])    
         tests = [dnet]
-        to = 1 if env["TEST_ASR"] else env["JOB_COUNT"]
+        to = 1 if env["DEBUG"] else env["JOB_COUNT"]
         for i in range(to):
             tests.append(env.ASRTest(["${ROOT_PATH}/transcripts_${JOB_ID + 1}_of_${JOB_COUNT}.ctm.gz",
                                       "${ROOT_PATH}/confusion_networks_${JOB_ID + 1}_of_${JOB_COUNT}.tgz"],
