@@ -344,10 +344,6 @@ def perform_search(target, source, env):
     return None
 
 
-def cascaded_score(target, source, env):
-    return None
-
-
 def split_list(target, source, env):
     with meta_open(source[0].rstr()) as ifd:
         lines = [l.strip() for l in ifd]
@@ -518,6 +514,17 @@ def run_kws(env, experiment_path, asr_output, vocabulary, pronunciations, keywor
     return merged
 
 
+def run_cascade(env, target, *sources, **kw):
+    # run_prepare_nway_cascade.sh
+    # run_search_cascade.sh
+    # run_postprocess_nway_cascade.sh
+    # merge_kwlists.py
+    # dt = env.ApplyRescaledDTPipe(pjoin(experiment_path, "dt.kwslist.xml"), [devinfo, database_file, ecf_file, merged])
+    # kws_score = env.BabelScorer([pjoin(experiment_path, "score.%s" % x) for x in ["alignment.csv", "bsum.txt", "sum.txt"]],
+    #                             [ecf_file, rttm_file, keyword_file, dt])
+    return None
+
+
 def TOOLS_ADD(env):
     BUILDERS = {
         "SplitList" : Builder(action=split_list),
@@ -551,7 +558,9 @@ def TOOLS_ADD(env):
                                       "perl  ${CN_KWS_SCRIPTS}/convert_CN.pl ${TARGETS[1]} ${NIST_EXPID_CORPUS} ${LANGUAGE_TEXT} ${SOURCES[0]} > ${TARGETS[2]}"
                                   ]),
         "BabelScorer" : Builder(action="perl -X ${BABELSCORER} -e ${SOURCES[0]} -r ${SOURCES[1]} -t ${SOURCES[2]} -s ${SOURCES[3]} -c -o -b -d -a --ExcludePNGFileFromTxtTable -f ${'.'.join(TARGETS[0].rstr().split('.')[0:-2])} -y TXT 2> /dev/null 1> /dev/null"),
-        "CascadedScore" : Builder(action=cascaded_score),
+
+        "MergeKeywordLists" : Builder(action="python ${CN_KWS_SCRIPTS}/merge_kwlists.py ${TARGET} ${SOURCES}"),
     }
     env.AddMethod(run_kws, "RunKWS")
+    env.AddMethod(run_cascade, "RunCascade")
     env.Append(BUILDERS=BUILDERS)

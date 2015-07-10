@@ -264,9 +264,12 @@ for language, properties in env["LANGUAGES"].iteritems():
                                              baseline_vocabulary,
                                              baseline_pronunciations,
                                              baseline_language_model)
+            baseline_asr_word_error_rate = env.WordErrorRate(
+                ["work/asr_experiments/${LANGUAGE_NAME}/${PACK}/baseline/%s" % x for x in ["babel.sys", "all.ctm", "babel.dtl", "babel.pra", "babel.raw", "babel.sgml"]],
+                [x[0] for x in baseline_asr_output] + env.Glob("${INDUSDB_PATH}/IARPA-babel${BABEL_ID}*/*dev.stm"))
             baseline_kws_output = env.RunKWS("work/kws_experiments/${LANGUAGE_NAME}/${PACK}/baseline",
-                                             [x[1] for x in baseline_asr_output[1:]], baseline_vocabulary, baseline_pronunciations, env.Glob("${DEV_KEYWORD_FILE}"))
-
+                                             [x[1] for x in baseline_asr_output], baseline_vocabulary, baseline_pronunciations, env.Glob("${DEV_KEYWORD_FILE}"))            
+            continue
             word_list = env.WordList("work/word_lists/${LANGUAGE_NAME}_${PACK}.txt", data)
             segmentations["dummy"] = env.DummySegmentation("work/segmentations/${LANGUAGE_NAME}/${PACK}/dummy.txt", word_list)
             morfessor, morfessor_model = env.TrainMorfessor(["work/morfessor/${LANGUAGE_NAME}_${PACK}.txt", "work/morfessor/${LANGUAGE_NAME}_${PACK}.model"], word_list)
@@ -304,7 +307,7 @@ for language, properties in env["LANGUAGES"].iteritems():
                                                   segmented_pronunciations,
                                                   segmented_language_model)
 
-                segmented_kws_output = env.RunKWS("work/kws_experiments/${LANGUAGE_NAME}/${PACK}/${MODEL}", [x[1] for x in segmented_asr_output[1:]], segmented_vocabulary, segmented_pronunciations, env.Glob("${DEV_KEYWORD_FILE}"))
+                segmented_kws_output = env.RunKWS("work/kws_experiments/${LANGUAGE_NAME}/${PACK}/${MODEL}", [x[1] for x in segmented_asr_output], segmented_vocabulary, segmented_pronunciations, env.Glob("${DEV_KEYWORD_FILE}"))
 
-                #cascaded_kws_output = env.CascadedScore("work/kws_experiments/${LANGUAGE_NAME}/${PACK}/${MODEL}/cascaded_score.txt",
-                #                                        [baseline_kws_output, segmented_kws_output])
+                cascaded_kws_output = env.RunCascade("work/kws_experiments/${LANGUAGE_NAME}/${PACK}/${MODEL}/cascaded_score.txt",
+                                                     [baseline_kws_output, segmented_kws_output])

@@ -104,17 +104,17 @@ def train_language_model(target, source, env):
         
     return None
 
-def score_results(target, source, env):
+def word_error_rate(target, source, env):
     """
     """    
-    ctm_path = source[0].rstr()
-    transcript = source[1].rstr()
+    ctms = [x.rstr() for x in source[0:-1]]
+    transcript = source[-1].rstr()
     out_path = os.path.dirname(target[0].rstr())
 
     # Get a list of IDs from the reference.  All must appear in the CTM output
     spkD = set()
-    with codecs.open(transcript, "rb", encoding="utf-8") as f:
-        for line in f:
+    with meta_open(transcript) as ifd:
+        for line in ifd:
             if line.startswith(";;"):
                 continue
             spkD.add(line.split()[0])
@@ -125,9 +125,9 @@ def score_results(target, source, env):
     # Merge and clean up CTM
     skipD = frozenset([u"~SIL", u"<s>", u"</s>", u"<HES>", u"<hes>"])
     ctmL = []
-    for file_ in glob(pjoin(ctm_path, "*.ctm")):
-        with codecs.open(file_, "rb", encoding="utf-8") as ctmF:
-            for line in ctmF:
+    for ctm in ctms:
+        with meta_open(ctm) as ifd:
+            for line in ifd:
                 uttid, pcm, beg, dur, token = line.split()
                 if isEval.search(pcm):
                     continue
@@ -165,10 +165,6 @@ def score_results(target, source, env):
     if not success:
         return out + err
     return None
-
-def score_emitter(target, source, env):
-    new_targets = [pjoin(target[0].rstr(), x) for x in ["babel.sys", "all.ctm", "babel.dtl", "babel.pra", "babel.raw", "babel.sgml"]]
-    return new_targets, source
 
 
 def asr_construct(target, source, env):
@@ -390,22 +386,24 @@ def asr_test(target, source, env):
 
 def run_asr(env, root_path, vocabulary, pronunciations, language_model, *args, **kw):
     env.Replace(ROOT_PATH=root_path)
+    tests = []
     if env["RUN_ASR"]:
         dnet = env.ASRConstruct("${ROOT_PATH}/dnet.bin.gz", [vocabulary, pronunciations, language_model], PACK=env["PACK"], BABEL_ID=env["BABEL_ID"], LANGUAGE_NAME=env["LANGUAGE_NAME"])    
-        tests = [dnet]
         to = 1 if env["DEBUG"] else env["JOB_COUNT"]
         for i in range(to):
             tests.append(env.ASRTest(["${ROOT_PATH}/transcripts_${JOB_ID + 1}_of_${JOB_COUNT}.ctm.gz",
                                       "${ROOT_PATH}/confusion_networks_${JOB_ID + 1}_of_${JOB_COUNT}.tgz"],
                                      [dnet, vocabulary, pronunciations, language_model], PACK=env["PACK"], BABEL_ID=env["BABEL_ID"], JOB_ID=i, LANGUAGE_NAME=env["LANGUAGE_NAME"]))
     else:
-        return [None] + [[None, x] for x in env.Glob("${ROOT_PATH}/*_[0-9]*_of_[0-9]*.tgz")]
+        tests = [[None, x] for x in env.Glob("${ROOT_PATH}/*_[0-9]*_of_[0-9]*.tgz")]
     return tests
 
 def TOOLS_ADD(env):
-    BUILDERS = {"ASRConstruct" : Builder(action=asr_construct),
-                "ASRTest" : Builder(action=asr_test),
-                "TrainLanguageModel" : Builder(action=train_language_model),
-                }
+    BUILDERS = {
+        "ASRConstruct" : Builder(action=asr_construct),
+        "ASRTest" : Builder(action=asr_test),
+        "TrainLanguageModel" : Builder(action=train_language_model),
+        "WordErrorRate" : Builder(action=word_error_rate),
+    }
     env.Append(BUILDERS=BUILDERS)
     env.AddMethod(run_asr, "RunASR")
