@@ -269,7 +269,7 @@ for language, properties in env["LANGUAGES"].iteritems():
                 [x[0] for x in baseline_asr_output] + env.Glob("${INDUSDB_PATH}/IARPA-babel${BABEL_ID}*/*dev.stm"))
             baseline_kws_output = env.RunKWS("work/kws_experiments/${LANGUAGE_NAME}/${PACK}/baseline",
                                              [x[1] for x in baseline_asr_output], baseline_vocabulary, baseline_pronunciations, env.Glob("${DEV_KEYWORD_FILE}"))            
-            continue
+
             word_list = env.WordList("work/word_lists/${LANGUAGE_NAME}_${PACK}.txt", data)
             segmentations["dummy"] = env.DummySegmentation("work/segmentations/${LANGUAGE_NAME}/${PACK}/dummy.txt", word_list)
             morfessor, morfessor_model = env.TrainMorfessor(["work/morfessor/${LANGUAGE_NAME}_${PACK}.txt", "work/morfessor/${LANGUAGE_NAME}_${PACK}.model"], word_list)
