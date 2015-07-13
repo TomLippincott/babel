@@ -1,4 +1,4 @@
-# BASE_PATH = "/vega/ccls/projects/babel"
+# BASE_PATH = "/vega/ccls/projects/babel_data"
 # JOB_COUNT = 40
 # DEBUG = False
 # THREADED_SUBMIT_NODE = False
