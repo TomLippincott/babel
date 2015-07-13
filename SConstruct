@@ -41,7 +41,8 @@ vars.AddVariables(
     BoolVariable("DEBUG", "Only run the first job in a given parallel set (e.g. to make sure everything works before using Torque)", False),
     ("LOG_LEVEL", "How much information to display while building", logging.INFO),
     ("LOG_DESTINATION", "Where to display log output", sys.stdout),
-
+    ("COMMAND_LINE_SUFFIX", "This is added to the end of command-line builders (e.g. to redirect stderr/stdout to /dev/null)", ""),
+    
     # ideally, BASE_PATH is the only path variable you need to define, since all the others are defined relative to it, 
     # but you can also override other path variables on a case-by-case basis in custom.py
     ("BASE_PATH", "Directory containing lots of resources needed for experiments", None),
@@ -72,6 +73,7 @@ vars.AddVariables(
     ("TORQUE_INTERVAL", "How often to check whether all pending Torque jobs have finished", 60),
     ("TORQUE_LOG", "Where Torque will create log files", "work/"),
     ("BASHRC_TXT", "Bash script that sets up environment variables", "${BASE_PATH}/bashrc.txt"),
+    ("TORQUE_RESOURCES", "Dictionary mapping experiment properties to Torque parallelization properties", {}),
     
     # Torque bookkeeping variables (don't set these yourself)
     BoolVariable("WORKER_NODE", "Tracks whether this is a worker node", False),
@@ -89,7 +91,7 @@ vars.AddVariables(
     ("PYCFG_PATH", "Mark Johnson's tool for training Adaptor Grammars", "${BASE_PATH}/local/bin"),
     
     # these variables all have default definitions in terms of the previous, but may be overridden as needed
-    ("G2P", "", "g2p.py"),
+    ("G2P", "Location of main Sequitur script", "g2p.py"),
     ("BABEL_BIN_PATH", "Location of IBM's compiled executables", "${LORELEI_SVN}/tools/kws/bin64"),
     ("BABEL_SCRIPT_PATH", "Location of IBM's KWS scripts", "${LORELEI_SVN}/tools/kws/scripts"),
     ("BABEL_CN_SCRIPT_PATH", "Location of IBM's confusion network KWS scripts", "${LORELEI_SVN}/tools/cn-kws/scripts"),
@@ -118,11 +120,11 @@ vars.AddVariables(
     ("ADD_INSERT", "", 5),
     ("NBESTP2P_IV", "How many expanded terms per IV query term according to P2P similarities", 2000),
     ("NBESTP2P_OOV", "How many expanded terms per OOV query term according to P2P similarities", 20000),
-    ("MINPHLENGTH", "", 2),
+    ("MINPHLENGTH", "How many phones a word must have to be considered", 2),
     ("PRINT_WORDS_THRESH", "", "1e-10"),
     ("PRINT_EPS_THRESH", "", "1e-03"),
     ("PRUNE", "", 10),
-    ("RESCORE_BEAM", "", 1.5),
+    ("RESCORE_BEAM", "(increasing this variable can greatly increase memory/time usage)", 1.5),
     ("LOWER_CASE", "Whether the language should, in general, be converted to lower case", False),
     ("CN_KWS_SCRIPTS", "", "${BASE_PATH}/lorelei_svn/tools/cn-kws/scripts"),
     ("JAVA_NORM", "", "${BABEL_REPO}/KWS/examples/babel-dryrun/javabin"),
@@ -168,7 +170,6 @@ logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%Y-%m-%d %H:%M:%S
 # initialize build environment
 env = Environment(variables=vars, ENV=os.environ, TARFLAGS="-c -z", TARSUFFIX=".tgz",
                   tools=["default", "textfile"] + [x.TOOLS_ADD for x in [babel_tools, morfessor_tools,
-                                                                         #mila_tools, almor_tools, 
                                                                          pycfg_tools,
                                                                          asr_tools, kws_tools, vocabulary_tools, g2p_tools, scons_tools,
                                                                          openfst_tools,
@@ -263,18 +264,21 @@ for language, properties in env["LANGUAGES"].iteritems():
             baseline_asr_output = env.RunASR("work/asr_experiments/${LANGUAGE_NAME}/${PACK}/baseline",
                                              baseline_vocabulary,
                                              baseline_pronunciations,
-                                             baseline_language_model)
+                                             baseline_language_model,
+                                             TORQUE_RESOURCES=env["TORQUE_RESOURCES"].get(("asr", "words"), {}))
+
             baseline_asr_word_error_rate = env.WordErrorRate(
-                ["work/asr_experiments/${LANGUAGE_NAME}/${PACK}/baseline/%s" % x for x in ["babel.sys", "all.ctm", "babel.dtl", "babel.pra", "babel.raw", "babel.sgml"]],
+                ["work/word_error_rates/${LANGUAGE_NAME}/${PACK}/baseline/%s" % x for x in ["babel.sys", "all.ctm", "babel.dtl", "babel.pra", "babel.raw", "babel.sgml"]],
                 [x[0] for x in baseline_asr_output] + env.Glob("${INDUSDB_PATH}/IARPA-babel${BABEL_ID}*/*dev.stm"))
             baseline_kws_output = env.RunKWS("work/kws_experiments/${LANGUAGE_NAME}/${PACK}/baseline",
                                              [x[1] for x in baseline_asr_output], baseline_vocabulary, baseline_pronunciations, env.Glob("${DEV_KEYWORD_FILE}"))            
 
             word_list = env.WordList("work/word_lists/${LANGUAGE_NAME}_${PACK}.txt", data)
-            segmentations["dummy"] = env.DummySegmentation("work/segmentations/${LANGUAGE_NAME}/${PACK}/dummy.txt", word_list)
+            #segmentations["dummy"] = env.DummySegmentation("work/segmentations/${LANGUAGE_NAME}/${PACK}/dummy.txt", word_list)
             morfessor, morfessor_model = env.TrainMorfessor(["work/morfessor/${LANGUAGE_NAME}_${PACK}.txt", "work/morfessor/${LANGUAGE_NAME}_${PACK}.model"], word_list)
             segmentations["morfessor"] = morfessor
             for model_name in ["prefix_suffix"]:
+
                 ag = env.AdaptorGrammarBabelExperiment("work/adaptor_grammars/${LANGUAGE_NAME}_${PACK}_${MODEL_NAME}/",
                                                        model_name,
                                                        properties.get("NON_ACOUSTIC_GRAPHEMES", []),
@@ -305,9 +309,10 @@ for language, properties in env["LANGUAGES"].iteritems():
                 segmented_asr_output = env.RunASR("work/asr_experiments/${LANGUAGE_NAME}/${PACK}/${MODEL}",
                                                   segmented_vocabulary,
                                                   segmented_pronunciations,
-                                                  segmented_language_model)
+                                                  segmented_language_model,
+                                                  TORQUE_RESOURCES=env["TORQUE_RESOURCES"].get(("asr", "morphs"), {}))
 
                 segmented_kws_output = env.RunKWS("work/kws_experiments/${LANGUAGE_NAME}/${PACK}/${MODEL}", [x[1] for x in segmented_asr_output], segmented_vocabulary, segmented_pronunciations, env.Glob("${DEV_KEYWORD_FILE}"))
 
-                cascaded_kws_output = env.RunCascade("work/kws_experiments/${LANGUAGE_NAME}/${PACK}/${MODEL}/cascaded_score.txt",
-                                                     [baseline_kws_output, segmented_kws_output])
+                cascaded_kws_output = env.RunCascade("work/kws_experiments/${LANGUAGE_NAME}/${PACK}/${MODEL}_cascaded",
+                                                     baseline_kws_output, segmented_kws_output)

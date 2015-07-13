@@ -11,7 +11,7 @@ import tarfile
 import logging
 import os.path
 import os
-import cPickle as pickle
+import pickle
 import math
 import xml.etree.ElementTree as et
 import gzip
@@ -38,11 +38,16 @@ from scons_tools import run_command
 
 
 class CFG():
+    """
+    This class captures the configuration information that is provided by cfg.py in
+    IBM's ASR pipelines.  It expands any variable ending in "FILE" using a regular
+    expression glob on the file system.
+    """
     dictFile = '${PRONUNCIATIONS_FILE}'
     vocab = '${VOCABULARY_FILE}'
     lm = '${LANGUAGE_MODEL_FILE}'
     dbFile = '${DATABASE_FILE}'
-    graph = '${GRAPH_FILE}'    
+    graph = '${NETWORK_FILE}'    
     psFile = '${PHONE_FILE}'
     pssFile = '${PHONE_SET_FILE}'
     tagsFile = '${TAGS_FILE}'
@@ -79,10 +84,17 @@ class CFG():
 
             
 def train_language_model(target, source, env):
+    """Train an n-gram language model using a plain text transcript.
+
+    Uses IBM's compiled LM tools that ship with Attila.  This can also be used on a segmented transcript,
+    in which case the n-grams are over morphs rather than words.
+
+    Sources: transcript file, n
+    Targets: language model file
+    """
     text_file = source[0].rstr()
     n = source[1].read()
     with temp_dir() as prefix_dir, temp_file() as vocab_file, temp_file(suffix=".txt") as sentence_file, meta_open(text_file) as text_fd:
-        # first create count files
         sentences = ["<s> %s </s>" % (l) for l in text_fd]
         words =  set(sum([s.split() for s in sentences], []) + ["<s>", "</s>", "<UNK>"])
         with meta_open(vocab_file, "w") as ofd:
@@ -95,7 +107,6 @@ def train_language_model(target, source, env):
         if not success:
             return err
         
-        # build LM
         lm = ".".join(target[0].rstr().split(".")[0:-2])
         cmd = "${ATTILA_PATH}/tools/lm_64/BuildNGram.sh -n %d -arpabo %s %s" % (n, prefix, lm)
         out, err, success = run_command(env.subst(cmd), env={"SFCLMTOOLS" : env.subst("${ATTILA_PATH}/tools/lm_64")})
@@ -104,9 +115,20 @@ def train_language_model(target, source, env):
         
     return None
 
+
 def word_error_rate(target, source, env):
+    """Calculate the word error rate of CTM transcripts with respect to an STM  gold standard.
+
+    Uses the government's SCLite scoring tools, and is essentially a cut-and-paste from the
+    "score.py" files included with the models IBM shipped to us.  It generates several files,
+    but the important one (AFAIK) is "babel.sys", which contains the word error rate (WER).  
+    Note that the WER is not necessarily a good indicator of KWS performance, but it should
+    at least demonstrate that the ASR is running correctly.  This can only be run on output
+    from a baseline experiment (i.e. not morph-space).
+
+    Sources: ctm file #1, ctm file #2, ..., stm transcript file
+    Targets: "babel.sys", "all.ctm", "babel.dtl", "babel.pra", "babel.raw", "babel.sgml"
     """
-    """    
     ctms = [x.rstr() for x in source[0:-1]]
     transcript = source[-1].rstr()
     out_path = os.path.dirname(target[0].rstr())
@@ -167,31 +189,44 @@ def word_error_rate(target, source, env):
     return None
 
 
-def asr_construct(target, source, env):
-    #
-    # based on Zulu LLP
-    #
+def decoding_network(target, source, env):
+    """Prepare a decoding network for an ASR experiment (based on Zulu LLP scripts from IBM).
+
+    This is a fast builder that creates a single, small file that is shared by all parallel jobs
+    of a given experiment.
+
+    Sources: vocabulary file, pronunciation file, language model
+    Targets: decoding network file
+    """
     vocabulary, pronunciations, language_model = source
-    env.Replace(VOCABULARY_FILE=vocabulary, PRONUNCIATIONS_FILE=pronunciations, LANGUAGE_MODEL_FILE=language_model) #, ACOUSTIC_WEIGHT=.060)    
+    env.Replace(VOCABULARY_FILE=vocabulary, PRONUNCIATIONS_FILE=pronunciations, LANGUAGE_MODEL_FILE=language_model)
     cfg = CFG(env)
-    #if env.subst("${BABEL_ID}") == "201":
-    #    cfg.treeFile = env.subst("${MODEL_PATH}/tree2")
     se = dsearch.Decoder(lmType=32)
     se.build(cfg)
     se.dnet.write(target[0].rstr())
     return None
 
-def asr_test(target, source, env):
-    #
-    # based on Zulu LLP
-    #
+
+def decode(target, source, env):
+    """Decode some audio using a decoding network and some models (based on the example pipelines from IBM).
+
+    This is the heart, and by far the most complicated and error-prone part, of the pipeline.  Basically,
+    the models IBM sent us are similar, but have small variations so that some need to be run
+    differently.  This builder tries to figure out what to do based on what model files exist, and
+    then run the appropriate code.  If it can't figure out what to run, it throws an error.  It is also 
+    aware of how many jobs the experiment has been split into, and only runs the job it was told to.  Most
+    of the code was just slightly-adapted from the cfg.py, construct.py, and test.py files in the acoustic 
+    models IBM sent us.
+
+    Sources: decoding network file, vocabulary file, pronunciation file, language model file
+    Targets: ctm transcript file, consensus network file
+    """
     dnet, vocabulary, pronunciations, language_model = source
-    #args = args.read()
     out_path, tail = os.path.split(os.path.dirname(target[0].rstr()))
     env.Replace(VOCABULARY_FILE=vocabulary.rstr(),
                 PRONUNCIATIONS_FILE=pronunciations.rstr(),
                 LANGUAGE_MODEL_FILE=language_model,
-                GRAPH_FILE=dnet,
+                NETWORK_FILE=dnet,
     )
         
     cfg = CFG(env)
@@ -209,13 +244,14 @@ def asr_test(target, source, env):
 
 
     db = dbase.DB(dirFn=dbase.getFlatDir)
+
     fe = frontend.FeCombo(db, int(env["SAMPLING_RATE"]), env["FEATURE_TYPE"])
     fe.end            = fe.fmllr
     fe.pcm.pcmDir     = cfg.pcmDir
     fe.pcm.readMode   = 'speaker'
     fe.norm.normMode  = 1
-    fe.norm.normDir   = env.subst("${CMS_PATH}") #cfg.cms'cms/'
-    fe.fmllr.fmllrDir = env.subst("${FMLLR_PATH}") #'fmllr/'
+    fe.norm.normDir   = env.subst("${CMS_PATH}")
+    fe.fmllr.fmllrDir = env.subst("${FMLLR_PATH}")
     
     #
     # from test.py
@@ -330,20 +366,14 @@ def asr_test(target, source, env):
     else:
         return "Don't know how to run ASR with these models!"
 
-    with meta_open(target[0].rstr(), "w") as ctm_ofd, tarfile.open(target[1].rstr(), "w|gz") as tf_ofd, temp_file() as temp_fname:        
+    with meta_open(target[0].rstr(), "w") as ctm_ofd, tarfile.open(target[1].rstr(), "w|gz") as tf_ofd, temp_file() as temp_fname:
         for utt in db:
             key    = utt + ' ' + os.path.splitext(db.getFile(utt))[0]
-            if mlp:
+            if mlp or nmlp:
                 fe.end.eval(utt)
-            elif nmlp:
-                fe.end.eval(utt)
-                #se.voc.lmap[se.voc.pronL.index("<s>(01)")] = se.voc.wordL.index("<s>")
-                #se.voc.lmap[se.voc.pronL.index("</s>(01)")] = se.voc.wordL.index("</s>")
             else:
                 nn.eval(utt)
-
             se.search()
-
             txt    = se.getHyp().strip()
             hyp    = se.getCTM(key, db.getFrom(utt))
             tscore = se.getScore()
@@ -353,57 +383,59 @@ def asr_test(target, source, env):
             with meta_open(temp_fname, "w") as ofd:
                 pass
             if writeLat:
-                
-                #fname = os.path.abspath(os.path.join(cfg.latDir,"%s.fsm.gz" % utt))
                 fname = "%s.fsm" % (utt)
-                #lattice_list_ofd.write("%s\n" % (fname))
                 se.lat.write(temp_fname, db.getFrom(utt))
             elif writeCons:
                 fname = "%s.cons" % (utt)
-                #fname = os.path.abspath(os.path.join(cfg.latDir, "%s.cons.gz" % utt))
-                #rescoreBeam = 2.0
-                #se.rescore(rescoreBeam)
                 arcN = len(se.lat.arcs)
                 durS = db.getTo(utt)- db.getFrom(utt)
                 dens = arcN / durS
-                ##se.voc.lmap[se.voc.pronL.index("<s>(01)")] = se.voc.optWordX
-                ##se.voc.lmap[se.voc.pronL.index("</s>(01)")] = se.voc.optWordX
-                # if (se.lat.arcs.size() < 100000):
-                #     postThresh=1e-08
-                # elif (se.lat.arcs.size() < 500000):
-                #     postThresh=1e-06
-                # else:
-                #     postThresh=1e-05
-
                 se.consensus(postThresh)
                 binThresh         = 1.0e-10
                 writeSIL          = 0
-                #lattice_list_ofd.write("%s\n" % (fname))
                 se.cons.write(temp_fname, db.getFrom(utt), binThresh, writeSIL)
             tf_ofd.add(temp_fname, arcname=fname)
         tf_ofd.close()
     return None
 
+
 def run_asr(env, root_path, vocabulary, pronunciations, language_model, *args, **kw):
+    """Set up an ASR experiment using the computational resources available.
+    
+    This is not an actual builder, but a "method" that sets up an ASR experiment according 
+    to its inputs and the resources available on the computer/specified in the SCons variables.
+    If RUN_ASR = False, just return any existing consensus network files already in place.
+
+    Inputs: output path, vocabulary file, pronunciation file, language model file
+    Outputs: (transcript file 1, consensus file 1), (transcript file 2, consensus file 2), ...
+    """
     env.Replace(ROOT_PATH=root_path)
     tests = []
+    resources = kw.get("TORQUE_RESOURCES", {})
+    env.Replace(JOB_COUNT=resources.get("JOB_COUNT", env.get("JOB_COUNT")))
+    env.Replace(TORQUE_TIME=resources.get("TORQUE_TIME", env.get("TORQUE_TIME")))
+    env.Replace(TORQUE_MEMORY=resources.get("TORQUE_MEMORY", env.get("TORQUE_MEMORY")))
     if env["RUN_ASR"]:
-        dnet = env.ASRConstruct("${ROOT_PATH}/dnet.bin.gz", [vocabulary, pronunciations, language_model], PACK=env["PACK"], BABEL_ID=env["BABEL_ID"], LANGUAGE_NAME=env["LANGUAGE_NAME"])    
+        decoding_network = env.DecodingNetwork("${ROOT_PATH}/decoding_network.gz", [vocabulary, pronunciations, language_model],
+                                               PACK=env["PACK"], BABEL_ID=env["BABEL_ID"], LANGUAGE_NAME=env["LANGUAGE_NAME"])    
         to = 1 if env["DEBUG"] else env["JOB_COUNT"]
         for i in range(to):
-            tests.append(env.ASRTest(["${ROOT_PATH}/transcripts_${JOB_ID + 1}_of_${JOB_COUNT}.ctm.gz",
-                                      "${ROOT_PATH}/confusion_networks_${JOB_ID + 1}_of_${JOB_COUNT}.tgz"],
-                                     [dnet, vocabulary, pronunciations, language_model], PACK=env["PACK"], BABEL_ID=env["BABEL_ID"], JOB_ID=i, LANGUAGE_NAME=env["LANGUAGE_NAME"]))
+            tests.append(env.Decode(["${ROOT_PATH}/transcripts_${JOB_ID + 1}_of_${JOB_COUNT}.ctm.gz",
+                                     "${ROOT_PATH}/confusion_networks_${JOB_ID + 1}_of_${JOB_COUNT}.tgz"],
+                                    [decoding_network, vocabulary, pronunciations, language_model], PACK=env["PACK"],
+                                    BABEL_ID=env["BABEL_ID"], JOB_ID=i, JOB_COUNT=env.get("JOB_COUNT"), LANGUAGE_NAME=env["LANGUAGE_NAME"],
+                                    TORQUE_TIME=env.get("TORQUE_TIME"), TORQUE_MEMORY=env.get("TORQUE_MEMORY")))
     else:
         tests = [[None, x] for x in env.Glob("${ROOT_PATH}/*_[0-9]*_of_[0-9]*.tgz")]
     return tests
 
+
 def TOOLS_ADD(env):
-    BUILDERS = {
-        "ASRConstruct" : Builder(action=asr_construct),
-        "ASRTest" : Builder(action=asr_test),
+    """Conventional way to add the four builders and one method to an SCons environment."""
+    env.Append(BUILDERS = {
+        "DecodingNetwork" : Builder(action=decoding_network),
+        "Decode" : Builder(action=decode),
         "TrainLanguageModel" : Builder(action=train_language_model),
         "WordErrorRate" : Builder(action=word_error_rate),
-    }
-    env.Append(BUILDERS=BUILDERS)
+    })
     env.AddMethod(run_asr, "RunASR")
