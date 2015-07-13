@@ -11,7 +11,6 @@
 #     ("TrainMorfessor", 2, 1, False),
 #     ("TrainLanguageModel", 1, 2, False),
 #     ("CreateQueries", 1, 5, False),
-#     ("CollectText", 1, 2, False),
 # ]
 # TORQUE_RESOURCES = {
 #     ("asr", "words") : {
