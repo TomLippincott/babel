@@ -202,7 +202,7 @@ def adaptor_grammar_babel_experiment(env, target_path, model_name, non_acoustic,
 
 
 def TOOLS_ADD(env):
-    """Conventional way to add the four builders and two methods to an SCons environment."""
+    """Conventional way to add builders and methods to an SCons environment."""
     env.Append(BUILDERS = {
         "CollectText" : Builder(action=collect_text),
         "PrepareSegmentationsForRelease" : Builder(action=Action(prepare_segmentations_for_release, varlist=["NON_ACOUSTIC_GRAPHEMES"])),

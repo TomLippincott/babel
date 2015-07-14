@@ -628,7 +628,7 @@ def run_cascade(env, experiment_path, word_space, morph_space, **kw):
 
 
 def TOOLS_ADD(env):
-    """Conventional way to add the four builders and two methods to an SCons environment."""
+    """Conventional way to add builders and methods to an SCons environment."""
     env.Append(BUILDERS = {
         "AddWordBreaks" : Builder(action=add_word_breaks),
         "QueryFiles" : Builder(action=query_files),

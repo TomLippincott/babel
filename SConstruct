@@ -211,6 +211,7 @@ def print_cmd_line(s, target, source, env):
             print line[:int(env["OUTPUT_WIDTH"]) - 10] + "..." + line[-7:]
         else:
             print line
+
 env['PRINT_CMD_LINE_FUNC'] = print_cmd_line
 
 # use time stamps to determine if a target needs to be rebuilt
