@@ -159,7 +159,7 @@ vars.AddVariables(
     ("CMS_PATH", "", "${IBM_MODELS}/${BABEL_ID}/${PACK}/adapt/cms"),
     ("FMLLR_PATH", "", "${IBM_MODELS}/${BABEL_ID}/${PACK}/adapt/fmllr"),
     ("ECF_FILE", "", "${INDUSDB_PATH}/*babel${BABEL_ID}*conv-dev/*.scoring.ecf.xml"),
-    ("DEV_KEYWORD_FILE", "File pattern for development keyword list", "${INDUSDB_PATH}/*babel${BABEL_ID}*conv-dev.kwlist.xml"),
+    ("DEV_KEYWORD_FILE", "File pattern for development keyword list", "${INDUSDB_PATH}/*babel${BABEL_ID}*conv-dev.kwlist2.xml"),
     ("EVAL_KEYWORD_FILE", "File pattern for evaluation keyword list", "data/eval_keyword_lists/*babel${BABEL_ID}*conv-eval.kwlist*.xml"),
     ("RTTM_FILE", "File pattern for the MIT audio segmentation", "${INDUSDB_PATH}/*babel${BABEL_ID}*conv-dev/*mit*rttm"),
 )
@@ -233,6 +233,7 @@ for language, properties in env["LANGUAGES"].iteritems():
     env.Replace(NON_ACOUSTIC_GRAPHEMES=properties.get("NON_ACOUSTIC_GRAPHEMES", []))
     env.Replace(NON_WORD_PATTERN=".*(_|\<).*")
     env.Replace(FORCE_SPLIT=["-"])
+    env.Replace(GRAPHEMIC=properties.get("GRAPHEMIC", False))
     
     packs = {}
     stripped_pack = env.FilterTar("work/stripped_packs/${BABEL_ID}.tgz", ["${LANGUAGE_PACK_PATH}/${BABEL_ID}_${LANGUAGE_NAME}.tgz", env.Value(r".*transcription.*")])
@@ -268,18 +269,25 @@ for language, properties in env["LANGUAGES"].iteritems():
                                              baseline_language_model,
                                              TORQUE_RESOURCES=env["TORQUE_RESOURCES"].get(("asr", "words"), {}))
 
-            baseline_asr_word_error_rate = env.WordErrorRate(
-                ["work/word_error_rates/${LANGUAGE_NAME}/${PACK}/baseline/%s" % x for x in ["babel.sys", "all.ctm", "babel.dtl", "babel.pra", "babel.raw", "babel.sgml"]],
-                [x[0] for x in baseline_asr_output] + env.Glob("${INDUSDB_PATH}/IARPA-babel${BABEL_ID}*/*dev.stm"))
+            if not properties.get("GRAPHEMIC", False):
+                g2p_model = env.TrainG2P("work/pronunciations/${LANGUAGE_NAME}_${PACK}_${MODEL}_baseline_model_1.txt", baseline_pronunciations)
+            else:
+                g2p_model = None
+            
+            #baseline_asr_word_error_rate = env.WordErrorRate(
+            #    ["work/word_error_rates/${LANGUAGE_NAME}/${PACK}/baseline/%s" % x for x in ["babel.sys", "all.ctm", "babel.dtl", "babel.pra", "babel.raw", "babel.sgml"]],
+            #    [x[0] for x in baseline_asr_output] + env.Glob("${INDUSDB_PATH}/IARPA-babel${BABEL_ID}*/*dev.stm"))
+            
             baseline_kws_output = env.RunKWS("work/kws_experiments/${LANGUAGE_NAME}/${PACK}/baseline",
-                                             [x[1] for x in baseline_asr_output], baseline_vocabulary, baseline_pronunciations, env.Glob("${DEV_KEYWORD_FILE}"))            
-
+                                             [x[1] for x in baseline_asr_output], baseline_vocabulary, baseline_pronunciations, env.Glob("${DEV_KEYWORD_FILE}"),
+                                             G2P_MODEL=g2p_model)
+            #continue
             word_list = env.WordList("work/word_lists/${LANGUAGE_NAME}_${PACK}.txt", data)
-            #segmentations["dummy"] = env.DummySegmentation("work/segmentations/${LANGUAGE_NAME}/${PACK}/dummy.txt", word_list)
+            segmentations["dummy"] = env.DummySegmentation("work/segmentations/${LANGUAGE_NAME}/${PACK}/dummy.txt", word_list)
             morfessor, morfessor_model = env.TrainMorfessor(["work/morfessor/${LANGUAGE_NAME}_${PACK}.txt", "work/morfessor/${LANGUAGE_NAME}_${PACK}.model"], word_list)
             segmentations["morfessor"] = morfessor
             for model_name in ["prefix_suffix"]:
-
+                
                 ag = env.AdaptorGrammarBabelExperiment("work/adaptor_grammars/${LANGUAGE_NAME}_${PACK}_${MODEL_NAME}/",
                                                        model_name,
                                                        properties.get("NON_ACOUSTIC_GRAPHEMES", []),
@@ -294,6 +302,7 @@ for language, properties in env["LANGUAGES"].iteritems():
 
                 if properties.get("GRAPHEMIC", False):
                     morph_pronunciations = env.GraphemicPronunciations("work/pronunciations/${LANGUAGE_NAME}_${PACK}_${MODEL}_morph_pronunciations.txt", morphs)
+                    g2p_segmented_model = None
                 else:
                     g2p_segmented_model = env.TrainG2P("work/pronunciations/${LANGUAGE_NAME}_${PACK}_${MODEL}_segmented_model_1.txt", segmented_pronunciations_training)
                     morph_pronunciations = env.ApplyG2P("work/pronunciations/${LANGUAGE_NAME}_${PACK}_${MODEL}_morph_pronunciations.txt", [g2p_segmented_model, morphs])
@@ -313,7 +322,7 @@ for language, properties in env["LANGUAGES"].iteritems():
                                                   segmented_language_model,
                                                   TORQUE_RESOURCES=env["TORQUE_RESOURCES"].get(("asr", "morphs"), {}))
 
-                segmented_kws_output = env.RunKWS("work/kws_experiments/${LANGUAGE_NAME}/${PACK}/${MODEL}", [x[1] for x in segmented_asr_output], segmented_vocabulary, segmented_pronunciations, env.Glob("${DEV_KEYWORD_FILE}"))
+                segmented_kws_output = env.RunKWS("work/kws_experiments/${LANGUAGE_NAME}/${PACK}/${MODEL}", [x[1] for x in segmented_asr_output], segmented_vocabulary, segmented_pronunciations, env.Glob("${DEV_KEYWORD_FILE}"), G2P_MODEL=g2p_segmented_model)
 
                 cascaded_kws_output = env.RunCascade("work/kws_experiments/${LANGUAGE_NAME}/${PACK}/${MODEL}_cascaded",
                                                      baseline_kws_output, segmented_kws_output)

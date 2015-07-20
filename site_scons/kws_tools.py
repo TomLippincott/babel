@@ -71,12 +71,42 @@ def keyword_symbols(target, source, env, for_signature):
     return "perl ${CN_KWS_SCRIPTS}/kwdsym.pl ${SOURCES} ${TARGET.get_dir()} ${COMMAND_LINE_SUFFIX}"
 
 
-def oov_pronunciations(target, source, env):
-    """Creates pronunciations for out-of-vocabulary query terms using a G2P model.
+def queries_to_oov_words(target, source, env):
+    """Compares out-of-vocabulary search terms and in-vocabulary pronunciations, and creates a list of out-of-vocabulary words.
+
+    Sources:
+    Targets:
+    """
+    oov_terms, iv_pronunciations = source
+    words = set()
+    iv_words = set()
+    with meta_open(oov_terms.rstr()) as ifd:
+        for line in ifd:
+            for word in line.split()[:-1]:
+                words.add(word)
+    with meta_open(iv_pronunciations.rstr()) as ifd:
+        for line in ifd:
+            iv_words.add(re.match(r"^(\S+)\(\d+\).*$", line).group(1))
+    with meta_open(target[0].rstr(), "w") as ofd:
+        ofd.write("\n".join([w for w in words if w not in iv_words]) + "\n")
+    return None
+
+
+def format_oov_pronunciations(target, source, env):
+    """Reassembles and formats out-of-vocabulary pronunciations.
 
     Sources: in-vocabulary pronunciation file, out-of-vocabulary query terms, g2p model
     Targets: out-of-vocabulary pronunciation file
     """
+    prons = {}
+    with meta_open(source[0].rstr()) as ifd:
+        for line in ifd:
+            toks = line.split("\t")
+            word = "%s(01)" % (toks[0])
+            pron = toks[-1].strip().split()
+            prons[word] = pron
+    with meta_open(target[0].rstr(), "w") as ofd:
+        ofd.write("\n".join(["%s %s" % (k, " ".join(v)) for k, v in prons.iteritems()]) + "\n")
     return None
 
 
@@ -141,6 +171,30 @@ def add_phone(target, source, env):
         data = {int(d) : s for s, d in [l.strip().split() for l in ifd]}
     m = max(data.keys())
     for i, s in enumerate(source[1].read()):
+        data[m + i + 1] = s
+    with meta_open(target[0].rstr(), "w") as ofd:
+        ofd.write("\n".join(["%s %d" % (s, d) for d, s in sorted(data.iteritems())]) + "\n")
+    return None
+
+
+def add_phones(target, source, env):
+    """Add phones to a baseline phone symbol file.
+
+    Sources: phone symbol file, FSM whose symbols should be fully covered
+    Targets: augmented phone symbol file
+    """
+    with meta_open(source[0].rstr()) as ifd:
+        data = {int(d) : s for s, d in [l.strip().split() for l in ifd]}
+    existing_phones = set(data.values())
+    new_phones = set()
+    with meta_open(source[1].rstr()) as ifd:
+        for line in ifd:
+            toks = line.strip().split()
+            if len(toks) == 5:
+                for p in [x for x in toks[2:4] if x not in existing_phones]:
+                    new_phones.add(p)
+    m = max(data.keys())
+    for i, s in enumerate(new_phones):
         data[m + i + 1] = s
     with meta_open(target[0].rstr(), "w") as ofd:
         ofd.write("\n".join(["%s %d" % (s, d) for d, s in sorted(data.iteritems())]) + "\n")
@@ -504,8 +558,8 @@ def run_kws(env, experiment_path, asr_output, vocabulary, pronunciations, keywor
     rttm_file = env.Glob("${RTTM_FILE}")[0]
     devinfo = env.File("${MODEL_PATH}/devinfo")
     p2p_file = env.File("${P2P_FILE}")
-    dict_oov = env.Glob("${IBM_MODELS}/${BABEL_ID}/${PACK}/kws-resources/*/dict.OOV.v2p")
-    dict_test = env.Glob("${IBM_MODELS}/${BABEL_ID}/${PACK}/kws-resources/*/dict.test.gz")
+    dict_oov = env.Glob("${IBM_MODELS}/${BABEL_ID}/${PACK}/*-resources/*/dict.OOV.v2p")
+    dict_test = env.Glob("${IBM_MODELS}/${BABEL_ID}/${PACK}/*-resources/*/dict.test.gz")
     expid = os.path.basename(ecf_file.rstr()).split("_")[0]
 
     iv_query_terms, oov_query_terms, word_to_word_fst = env.QueryFiles([pjoin(experiment_path, x) for x in ["iv_queries.txt", 
@@ -515,20 +569,23 @@ def run_kws(env, experiment_path, asr_output, vocabulary, pronunciations, keywor
 
     keyword_symbols = env.KeywordSymbols(pjoin(experiment_path, "keywords.sym"), [iv_query_terms, oov_query_terms])
 
-    if kw.get("GRAPHEMIC", False):
+    if env.get("GRAPHEMIC", False):
         oov_pronunciations_nobreak = env.GraphemicOOVPronunciations(pjoin(experiment_path, "oov_pronunciations_nobreak.txt"), [pronunciations, oov_query_terms])
     else:
-        oov_pronunciations_nobreak = env.OOVPronunciations(pjoin(experiment_path, "oov_pronunciations_nobreak.txt"), [pronunciations, oov_query_terms])
+        oov_query_words = env.QueriesToOOVWords(pjoin(experiment_path, "query_oov_words.txt"), [oov_query_terms, pronunciations])
+        oov_query_words_pronunciations = env.ApplyG2P(pjoin(experiment_path, "oov_query_words_pronunciations.txt"), [kw["G2P_MODEL"], oov_query_words])
+        oov_pronunciations_nobreak = env.FormatOOVPronunciations(pjoin(experiment_path, "oov_pronunciations_nobreak.txt"),
+                                                                 oov_query_words_pronunciations)
 
     oov_pronunciations = env.AddWordBreaks(pjoin(experiment_path, "oov_pronunciations.txt"), oov_pronunciations_nobreak)
-
+    
     fst_header, phone_symbols, word_symbols, w2p_fsm, w2p_fst = env.WordsToPhones(
         [pjoin(experiment_path, x) for x in ["fst_header", "phones.sym", "words.sym", "words2phones.fsm", "words2phones.fst"]],
         [pronunciations, oov_pronunciations, dict_oov]
     )
 
-    phone_symbols = env.AddPhone(pjoin(experiment_path, "p2p_workaround", "phones.sym"), [phone_symbols, env.Value(["u0071", "HES01", "HES02"])])
-
+    phone_symbols = env.AddPhones(pjoin(experiment_path, "p2p_workaround", "phones.sym"), [phone_symbols, p2p_file])
+    
     p2p_fsm = env.PhonesToPhones(pjoin(experiment_path, "P2P.fsm"), [p2p_file, phone_symbols])
 
     p2p_unsorted = env.FSTCompile(pjoin(experiment_path, "P2P_unsorted.fst"), [phone_symbols, phone_symbols, p2p_fsm])
@@ -562,7 +619,7 @@ def run_kws(env, experiment_path, asr_output, vocabulary, pronunciations, keywor
                                             [index, keyword_symbols])
         
         expanded_index = env.ExpandPhoneIndex(pjoin(experiment_path, "expanded_index_%d_of_%d.fsm" % (i, j)),
-                                              [index, dict_test])
+                                              [index, pronunciations])
 
         expanded_index_symbols, ebsym = env.IndexToSymbolTables([pjoin(experiment_path, "expanded_index_%d_of_%d_sorted.%s" % (i, j, x)) for x in ["sym", "bsym"]],
                                             [expanded_index])
@@ -627,16 +684,18 @@ def run_cascade(env, experiment_path, word_space, morph_space, **kw):
     return None
 
 
+
+
 def TOOLS_ADD(env):
     """Conventional way to add builders and methods to an SCons environment."""
     env.Append(BUILDERS = {
         "AddWordBreaks" : Builder(action=add_word_breaks),
         "QueryFiles" : Builder(action=query_files),
         "KeywordSymbols" : Builder(generator=keyword_symbols),
-        "OOVPronunciations" : Builder(action=oov_pronunciations),
         "GraphemicOOVPronunciations" : Builder(action=graphemic_oov_pronunciations),
         "WordsToPhones" : Builder(generator=words_to_phones),
         "AddPhone" : Builder(action=add_phone),
+        "AddPhones" : Builder(action=add_phones),
         "PhonesToPhones" : Builder(action=phones_to_phones),
         "WordPronounceSymTable" : Builder(action=word_pronounce_sym_table), 
         "CleanPronounceSymTable" : Builder(action=clean_pronounce_sym_table),
@@ -652,6 +711,8 @@ def TOOLS_ADD(env):
         "MergeIVOOVCascade" : Builder(generator=merge_iv_oov_cascade),
         "ApplyRescaledDTPipe" : Builder(generator=apply_rescaled_dt_pipe),
         "BabelScorer" : Builder(generator=babel_scorer),
+        "QueriesToOOVWords" : Builder(action=queries_to_oov_words),
+        "FormatOOVPronunciations" : Builder(action=format_oov_pronunciations),
     })
     env.AddMethod(run_kws, "RunKWS")
     env.AddMethod(run_cascade, "RunCascade")
