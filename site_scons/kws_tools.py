@@ -559,7 +559,7 @@ def run_kws(env, experiment_path, asr_output, vocabulary, pronunciations, keywor
     devinfo = env.File("${MODEL_PATH}/devinfo")
     p2p_file = env.File("${P2P_FILE}")
     dict_oov = env.Glob("${IBM_MODELS}/${BABEL_ID}/${PACK}/*-resources/*/dict.OOV.v2p")
-    dict_test = env.Glob("${IBM_MODELS}/${BABEL_ID}/${PACK}/*-resources/*/dict.test.gz")
+    #dict_test = env.Glob("${IBM_MODELS}/${BABEL_ID}/${PACK}/*-resources/*/dict.test.gz")
     expid = os.path.basename(ecf_file.rstr()).split("_")[0]
 
     iv_query_terms, oov_query_terms, word_to_word_fst = env.QueryFiles([pjoin(experiment_path, x) for x in ["iv_queries.txt", 
@@ -654,8 +654,8 @@ def run_kws(env, experiment_path, asr_output, vocabulary, pronunciations, keywor
 
     dt = env.ApplyRescaledDTPipe(pjoin(experiment_path, "dt.kwslist.xml"), [devinfo, database_file, ecf_file, merged])
 
-    kws_score = env.BabelScorer([pjoin(experiment_path, "score.%s" % x) for x in ["alignment.csv", "bsum.txt", "sum.txt"]],
-                                [ecf_file, rttm_file, keyword_file, dt])
+    #kws_score = env.BabelScorer([pjoin(experiment_path, "score.%s" % x) for x in ["alignment.csv", "bsum.txt", "sum.txt"]],
+    #                            [ecf_file, rttm_file, keyword_file, dt])
 
     return merged
 

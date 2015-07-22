@@ -33,8 +33,167 @@ import misc
 import dbase
 import frontend
 import nnet
-from attila import NNScorer, errorHandler, Act_Rectified, Act_Sigmoid, Act_ID, MatrixCU, Act_Tanh, Act_Softmax, HMM
+from attila import NNScorer, errorHandler, Act_Rectified, Act_Sigmoid, Act_ID, MatrixCU, Act_Tanh, Act_Softmax, HMM, Window, Audio, Decimator
+from frontend import FeFFT, FeMEL, FeGamma, FeMFCC, FeLogMel, FeRootMel, FePLP, FeFusion, FeNorm, FeDeltaCTX, FeCTX, FeLDA, FeFMLLR, FeFMPE, FeFMMI, FeNormAccu, FeIIRFilter, FeFile, SpeechDetector, FeSilenceDetector, FePad, FeCache, FeMLP, FeFFV, FeOnlyFFV, FeCombo
+import frontenditf
 from scons_tools import run_command
+
+
+class TarAudio(Audio):
+    pass
+
+
+class TarFeAudio(frontend.FeAudio):
+
+    def __init__(self,win):
+        frontenditf.Fe.__init__(self)
+        self.readMode    = "speaker"
+        self.readSwitch  = False
+        self.key         = 0,0,0,0
+        self.pcmDir      = ''
+        self.pcmVar      = ''
+        self.pcmSpk      = TarAudio()
+        self.pcmUtt      = TarAudio()
+        self.win         = win
+        self.feat        = self.pcmUtt
+        self.socket      = None
+        self.dec         = Decimator()
+        self.dec.factor  = 1
+        self.preemphasis = 1
+    
+    def readFile(self,utt):
+        spk   = self.db.getSpk(utt)
+        name  = self.db.getDir(spk,root=self.pcmDir)
+        name += os.sep + self.pcmVar + os.sep + self.db.getFile(utt)
+        ext   = os.path.splitext(name)[1].lower()
+        real  = misc.findExt(name)
+        real  = os.path.normpath(real)
+        ch    = self.db.getChannel(utt)
+        beg   = self.win.s2f(self.db.getFrom(utt))
+        beg   = self.dec.factor * self.win.f2p(beg)
+        end   = self.dec.factor * self.win.s2p(self.db.getTo(utt))        
+        key   = real,ch,beg,end
+        name = self.db.getFile(utt)
+        
+        # same audio segment
+        if self.key == key:
+            return       
+        # same audio file
+        if self.key[:2] == key[:2] and self.pcmSpk.dimN > 0:
+            self.key = key
+            if beg == 0 and end < 0:
+                self.feat = self.pcmSpk
+                return
+            if end < 0:
+                end = self.pcmSpk.dimN
+            if end > self.pcmSpk.dimN:
+                misc.warn('FeAudio::readFile','invalid end time','%s to= %s sampleN= %d'%(utt,self.db.getTo(utt),self.pcmSpk.dimN))
+                end = self.pcmSpk.dimN
+            self.pcmUtt.slice(beg,end,self.pcmSpk)
+            self.feat = self.pcmUtt
+            return                            
+        misc.info('FeAudio::readFile','read','%s beg= %d end= %d'%(real,beg,end))
+        self.pcmSpk.resize(0,0)
+        self.pcmUtt.resize(0,0)        
+        self.key = key
+        if self.readMode == 'speaker':
+            rbeg,rend = 0,-1
+            self.feat = self.pcmSpk
+        else:
+            rbeg,rend = beg,end
+            self.feat = self.pcmUtt
+        # file formats that can read segments
+        if ext == '.sph':            
+            self.feat.readSphere(real,rbeg,rend,ch)
+        # if ext == '.flac':            
+        #     self.feat.readFlac(real,rbeg,rend,ch)
+        # if ext == '.pcm8':            
+        #     self.feat.readPCM(real,1,rbeg,rend)
+        # if ext == '.pcm16' or ext == '.pcm':            
+        #     self.feat.readPCM(real,2,rbeg,rend)
+        if self.feat.dimN > 0:
+            # extract segment from entire audio file when in speakerMode
+            if self.feat == self.pcmSpk:
+                if beg == 0 and end < 0:
+                    self.feat = self.pcmSpk
+                    return
+                if end < 0:
+                    end = self.pcmSpk.dimN
+                if end > self.pcmSpk.dimN:
+                    misc.warn('FeAudio::readFile','invalid end time','%s to= %s sampleN= %d'%(utt,self.db.getTo(utt),self.pcmSpk.dimN))
+                    end = self.pcmSpk.dimN
+                self.pcmUtt.slice(beg,end,self.pcmSpk)
+                self.feat = self.pcmUtt
+            return
+        # file formats that cannot read segments
+        self.feat = self.pcmSpk
+        # if ext == '.ulaw':
+        #     self.feat.readUlaw(real)
+        # elif ext == '.vox':
+        #     self.feat.readVOX(real)
+        if ext == '.wav':
+            self.feat.readWAV(real)
+        else:
+            raise RunTimeError, 'FeAudio::readFile unknown file extension %s'%ext
+        # extract segment from entire audio file
+        if beg == 0 and end < 0:
+            self.feat = self.pcmSpk
+            return
+        if end < 0:
+            end = self.pcmSpk.dimN
+        if end > self.pcmSpk.dimN:
+            misc.warn('FeAudio::readFile','invalid end time','%s to= %s sampleN= %d'%(utt,self.db.getTo(utt),self.pcmSpk.dimN))
+            end = self.pcmSpk.dimN
+        self.pcmUtt.slice(beg,end,self.pcmSpk)
+        self.feat = self.pcmUtt
+        return
+
+
+class TarFeCombo(frontend.FeCombo):
+    def __init__(self,db,sr=8000,type='plp',ctxtype='splice',streaming=False):
+        self.win       = Window()
+        self.pcm       = d = TarFeAudio(self.win)
+        self.fft       = d = FeFFT([d],self.win)        
+        self.mel       = d = FeMEL([self.fft])
+        self.gamma     = d = FeGamma([self.fft])        
+        self.mfcc      = d = FeMFCC([self.mel])
+        self.logmel    = d = FeLogMel([self.mel])
+        self.rootmel   = d = FeRootMel([self.mel])
+        self.plp       = d = FePLP([self.mel])
+        self.fusion    = d = FeFusion([self.plp,self.mfcc])
+        self.norm      = d = FeNorm([self.plp])
+        self.deltactx  = d = FeDeltaCTX([self.norm])
+        self.ctx       = d = FeCTX([self.norm])
+        self.lda       = d = FeLDA([d])
+        self.fmllr     = d = FeFMLLR([d])
+        self.fmpe      = d = FeFMPE([d])
+        self.fmmi      = d = FeFMMI([self.fmllr])
+        self.accu      = d = FeNormAccu(self.mel,[self.plp])
+        self.iirfilter = FeIIRFilter([self.pcm])
+        self.file      = FeFile()            
+        self.sdet      = SpeechDetector([self.pcm])
+        self.sildet    = FeSilenceDetector([self.pcm])
+        self.pad       = FePad([])
+        self.cache     = FeCache([])
+        self.mlp       = FeMLP([])
+        self.nn        = nnet.NeuralNet()
+        self.ffv       = FeFFV(sr,[])      
+        self.ffvonly   = FeOnlyFFV(self.win,[])
+        self.end       = ''
+        self.win.sr    = sr
+        self.win.win   = 200 * sr / 8000
+        self.win.shift = 80  * sr / 8000
+        self.win.segs  = 1
+        # ensure FFT length is a power of 2
+        m, e = math.frexp(sr / 8000.0)
+        if m == 0.5:
+            e -= 1
+        self.fft.fft.fft = int(math.pow(2,e) * self.fft.fft.fft)
+        self.connect(type,ctxtype)
+        self.assignDB(db)
+        for e in vars(self).itervalues():
+            if hasattr(e,'streaming') : e.streaming = streaming
+        return
 
 
 class CFG():
@@ -245,7 +404,7 @@ def decode(target, source, env):
 
     db = dbase.DB(dirFn=dbase.getFlatDir)
 
-    fe = frontend.FeCombo(db, int(env["SAMPLING_RATE"]), env["FEATURE_TYPE"])
+    fe = FeCombo(db, int(env["SAMPLING_RATE"]), env["FEATURE_TYPE"])
     fe.end            = fe.fmllr
     fe.pcm.pcmDir     = cfg.pcmDir
     fe.pcm.readMode   = 'speaker'
