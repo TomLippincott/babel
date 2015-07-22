@@ -283,7 +283,7 @@ for language, properties in env["LANGUAGES"].iteritems():
                                              G2P_MODEL=g2p_model)
             
             word_list = env.WordList("work/word_lists/${LANGUAGE_NAME}_${PACK}.txt", data)
-            segmentations["dummy"] = env.DummySegmentation("work/segmentations/${LANGUAGE_NAME}/${PACK}/dummy.txt", word_list)
+            #segmentations["dummy"] = env.DummySegmentation("work/segmentations/${LANGUAGE_NAME}/${PACK}/dummy.txt", word_list)
             morfessor, morfessor_model = env.TrainMorfessor(["work/morfessor/${LANGUAGE_NAME}_${PACK}.txt", "work/morfessor/${LANGUAGE_NAME}_${PACK}.model"], word_list)
             segmentations["morfessor"] = morfessor
             for model_name in ["prefix_suffix"]:
