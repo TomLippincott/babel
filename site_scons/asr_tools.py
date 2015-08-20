@@ -585,7 +585,9 @@ def run_asr(env, root_path, vocabulary, pronunciations, language_model, *args, *
                                     BABEL_ID=env["BABEL_ID"], JOB_ID=i, JOB_COUNT=env.get("JOB_COUNT"), LANGUAGE_NAME=env["LANGUAGE_NAME"],
                                     TORQUE_TIME=env.get("TORQUE_TIME"), TORQUE_MEMORY=env.get("TORQUE_MEMORY")))
     else:
-        tests = [[None, x] for x in env.Glob("${ROOT_PATH}/*_[0-9]*_of_[0-9]*.tgz")]
+        for cn in env.Glob("${ROOT_PATH}/confusion_networks_[0-9]*_of_[0-9]*.tgz"):
+            number, total = map(int, re.match(r"^.*confusion_networks_(\d+)_of_(\d+).tgz", cn.rstr()).groups())
+            tests.append((env.File("${ROOT_PATH}/transcripts_%d_of_%d.ctm.gz" % (number, total)), cn))
     return tests
 
 

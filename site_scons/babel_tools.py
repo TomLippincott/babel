@@ -135,6 +135,8 @@ def word_list(target, source, env):
     with meta_open(source[0].rstr()) as ifd:
         for line in ifd:
             for word in line.strip().split():
+                if env.get("LOWER_CASE"):
+                    word = word.lower()
                 words[word] = words.get(word, 0) + 1
     with meta_open(target[0].rstr(), "w") as ofd:
         ofd.write("\n".join(["%s %d" % (k, v) for k, v in words.iteritems()]) + "\n")            
@@ -194,11 +196,56 @@ def adaptor_grammar_babel_experiment(env, target_path, model_name, non_acoustic,
                                                  [cfg, pycfg_data])
     training_segmentations = env.NormalizePYCFGOutput("${TARGET_PATH}/output_normalized.txt", segmentations)
     segmented = [training_segmentations]
-    #for keyword_list in Flatten(word_lists[1:]):
-    #    kw_data = env.MorphologyData("${SOURCE.base}_${TRAINING_NAME}_${MODEL_NAME}.txt", keyword_list, NON_ACOUSTIC_GRAPHEMES=non_acoustic)
-    #    segmented.append(env.ApplyAdaptorGrammar("${SOURCES[1].base}_${TRAINING_NAME}_${MODEL_NAME}_segmented.txt", [grammar, kw_data[0]]))
+    for keyword_list in Flatten(word_lists[1:]):
+        kw_data = env.MorphologyData("${SOURCE.base}_${TRAINING_NAME}_${MODEL_NAME}.txt", keyword_list, NON_ACOUSTIC_GRAPHEMES=non_acoustic)
+        segmented.append(env.ApplyAdaptorGrammar("${SOURCES[1].base}_${TRAINING_NAME}_${MODEL_NAME}_segmented.txt", [grammar, kw_data[0]]))
             
     return segmented
+
+
+def keyword_list_to_model_input(target, source, env):
+    """Turns an XML keyword list into a simple text file of one unique token per line.
+
+    Sources: XML keyword list
+    Targets: text file of unique words
+    """
+    tokens = set()
+    with meta_open(source[0].rstr(), enc=None) as ifd:
+        xml = et.parse(ifd)
+        for e in xml.iter("kwtext"):
+            term = e.text.strip()
+            if env.get("LOWER_CASE"):
+                term = term.lower()
+            for word in term.strip().split():
+                tokens.add(word)
+    with meta_open(target[0].rstr(), "w") as ofd:
+        ofd.write("\n".join(sorted(tokens)) + "\n")
+    return None
+
+
+def reconstruct_segmented_keywords(target, source, env):
+    """Creates a morph-space version of an XML keyword list, given segmentations for all its words.
+
+    Sources: XML keyword list, segmentation file
+    Targets: XML morph-space keyword list
+    """
+    segmentations = {}
+    with meta_open(source[1].rstr()) as ifd:
+        for line in ifd:
+            toks = line.strip().split()
+            word = re.sub(r"\+\s+\+", "", line.strip())
+            segmentations[word] = toks
+    with meta_open(source[0].rstr(), enc=None) as ifd:
+        xml = et.parse(ifd)
+        for e in xml.iter("kwtext"):
+            term = e.text.strip()
+            if env.get("LOWER_CASE"):
+                term = term.lower()
+            terms = term.split()
+            e.text = " ".join(sum([segmentations.get(w, [w]) for w in terms], []))
+    with meta_open(target[0].rstr(), "w") as ofd:
+        xml.write(ofd)
+    return None
 
 
 def TOOLS_ADD(env):
@@ -209,6 +256,8 @@ def TOOLS_ADD(env):
         "SegmentTranscripts" : Builder(action=segment_transcripts),
         "WordList" : Builder(action=word_list),
         "StmToData" : Builder(action=stm_to_data),
+        "KeywordListToModelInput" : Builder(action=keyword_list_to_model_input),
+        "ReconstructSegmentedKeywords" : Builder(action=reconstruct_segmented_keywords),
     })
     env.AddMethod(morfessor_babel_experiment, "MorfessorBabelExperiment")
     env.AddMethod(adaptor_grammar_babel_experiment, "AdaptorGrammarBabelExperiment")

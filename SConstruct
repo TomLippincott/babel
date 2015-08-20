@@ -274,6 +274,8 @@ for language, properties in env["LANGUAGES"].iteritems():
             else:
                 g2p_model = None
             
+            keyword_file = env.maybe("${DEV_KEYWORD_FILE}")
+
             baseline_asr_word_error_rate = env.WordErrorRate(
                 ["work/word_error_rates/${LANGUAGE_NAME}/${PACK}/baseline/%s" % x for x in ["babel.sys", "all.ctm", "babel.dtl", "babel.pra", "babel.raw", "babel.sgml"]],
                 [x[0] for x in baseline_asr_output] + env.Glob("${INDUSDB_PATH}/IARPA-babel${BABEL_ID}*/*dev.stm"))
@@ -281,20 +283,29 @@ for language, properties in env["LANGUAGES"].iteritems():
             baseline_kws_output = env.RunKWS("work/kws_experiments/${LANGUAGE_NAME}/${PACK}/baseline",
                                              [x[1] for x in baseline_asr_output], baseline_vocabulary, baseline_pronunciations, env.Glob("${DEV_KEYWORD_FILE}"),
                                              G2P_MODEL=g2p_model)
-            
+
             word_list = env.WordList("work/word_lists/${LANGUAGE_NAME}_${PACK}.txt", data)
-            #segmentations["dummy"] = env.DummySegmentation("work/segmentations/${LANGUAGE_NAME}/${PACK}/dummy.txt", word_list)
+            keywords_for_models = env.KeywordListToModelInput("work/word_lists/${LANGUAGE_NAME}_${PACK}_keywords.txt", keyword_file)
             morfessor, morfessor_model = env.TrainMorfessor(["work/morfessor/${LANGUAGE_NAME}_${PACK}.txt", "work/morfessor/${LANGUAGE_NAME}_${PACK}.model"], word_list)
-            segmentations["morfessor"] = morfessor
+            segmented_keyword_vocab = env.ApplyMorfessor("work/morfessor/${LANGUAGE_NAME}_${PACK}_segmented_keyword_vocab.txt", 
+                                                         [morfessor_model, keywords_for_models])
+            segmented_keywords = env.ReconstructSegmentedKeywords("work/morfessor/${LANGUAGE_NAME}_${PACK}_segmented_keywords.xml", 
+                                                                  [keyword_file, segmented_keyword_vocab])
+
+            segmentations["morfessor"] = (morfessor, segmented_keywords)
+
             for model_name in ["prefix_suffix"]:
                 
-                ag = env.AdaptorGrammarBabelExperiment("work/adaptor_grammars/${LANGUAGE_NAME}_${PACK}_${MODEL_NAME}/",
-                                                       model_name,
-                                                       properties.get("NON_ACOUSTIC_GRAPHEMES", []),
-                                                       word_list)
-                segmentations[model_name] = ag
+                (ag, segmented_keyword_vocab) = env.AdaptorGrammarBabelExperiment("work/adaptor_grammars/${LANGUAGE_NAME}_${PACK}_${MODEL_NAME}/",
+                                                                                  model_name,
+                                                                                  properties.get("NON_ACOUSTIC_GRAPHEMES", []),
+                                                                                  [word_list, keywords_for_models])
+
+                segmented_keywords = env.ReconstructSegmentedKeywords("work/adaptor_grammars/${LANGUAGE_NAME}_${PACK}_${MODEL_NAME}_segmented_keywords.xml", 
+                                                                      [keyword_file, segmented_keyword_vocab])
+                segmentations[model_name] = (ag, segmented_keywords)
             
-            for model_name, segmentation in segmentations.iteritems():
+            for model_name,(segmentation, segmented_keywords) in segmentations.iteritems():
                 env.Replace(MODEL=model_name)
                 segmented_pronunciations_training, morphs = env.SegmentedPronunciations(["work/pronunciations/${LANGUAGE_NAME}_${PACK}_${MODEL}_segmented.txt",
                                                                                          "work/pronunciations/${LANGUAGE_NAME}_${PACK}_${MODEL}_morphs.txt"],
@@ -322,7 +333,7 @@ for language, properties in env["LANGUAGES"].iteritems():
                                                   segmented_language_model,
                                                   TORQUE_RESOURCES=env["TORQUE_RESOURCES"].get(("asr", "morphs"), {}))
 
-                segmented_kws_output = env.RunKWS("work/kws_experiments/${LANGUAGE_NAME}/${PACK}/${MODEL}", [x[1] for x in segmented_asr_output], segmented_vocabulary, segmented_pronunciations, env.Glob("${DEV_KEYWORD_FILE}"), G2P_MODEL=g2p_segmented_model)
+                segmented_kws_output = env.RunKWS("work/kws_experiments/${LANGUAGE_NAME}/${PACK}/${MODEL}", [x[1] for x in segmented_asr_output], segmented_vocabulary, segmented_pronunciations, segmented_keywords, G2P_MODEL=g2p_segmented_model)
 
                 cascaded_kws_output = env.RunCascade("work/kws_experiments/${LANGUAGE_NAME}/${PACK}/${MODEL}_cascaded",
                                                      baseline_kws_output, segmented_kws_output)

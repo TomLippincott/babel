@@ -1,25 +1,28 @@
 # BASE_PATH = "/vega/ccls/projects/babel_data"
 # JOB_COUNT = 40
 # DEBUG = False
+# LOWER_CASE = True
 # THREADED_SUBMIT_NODE = False
 # TORQUE_SUBMIT_NODE = True
 # LONG_RUNNING = [
-#     ("Decode", 2, 4, False),
-#     ("PerformSearch", 1, 5, False),
-#     ("TrainG2P", 1, 1, False),
-#     ("RunPYCFG", 5, 4, False),
-#     ("TrainMorfessor", 2, 1, False),
-#     ("TrainLanguageModel", 1, 2, False),
-#     ("CreateQueries", 1, 5, False),
+# ("Decode", 2, 4, False),
+# ("PerformSearch", 1, 5, False),
+# ("TrainG2P", 1, 1, False),
+# ("RunPYCFG", 3, 2, False),
+# ("TrainMorfessor", 2, 1, False),
+# ("TrainLanguageModel", 1, 2, False),
+# ("CreateQueries", 1, 5, False),
+# ("CollectText", 1, 2, False),
+# ("FilterTar", 1, 2, False),
 # ]
 # TORQUE_RESOURCES = {
 #     ("asr", "words") : {
-#         "JOB_COUNT" : 8,
-#         "TORQUE_MEMORY" : "4gb",
+#         "JOB_COUNT" : 10,
+#         "TORQUE_MEMORY" : "16gb",
 #         "TORQUE_TIME" : "12:00:00",
 #     },
 #     ("asr", "morphs") : {
-#         "JOB_COUNT" : 8,
+#         "JOB_COUNT" : 20,
 #         "TORQUE_MEMORY" : "16gb",
 #         "TORQUE_TIME" : "12:00:00",
 #     },
@@ -96,7 +99,7 @@
 #         #"ACOUSTIC_WEIGHT" : .053,
 #         "PHONEME_SWAP" : {"3" : "E"},
 #         "PACKS" : ["FLP", "LLP"],
-#     },
+q#     },
 #     "tok_pisin" : {
 #         "BABEL_ID" : 207,
 #         "PACKS" : ["FLP", "VLLP"],

@@ -546,10 +546,11 @@ def run_kws(env, experiment_path, asr_output, vocabulary, pronunciations, keywor
     Outputs: KWS output
     """
     env.Replace(EPSILON_SYMBOLS="'<s>,</s>,~SIL,<HES>'")
-
+    
     if not env["RUN_KWS"]:
         return None
-    to = 1 if env["DEBUG"] else env["JOB_COUNT"]
+    kws_job_count = 1
+    to = 1 if env["DEBUG"] else kws_job_count
     
     pronunciations = env.AddWordBreaks(pjoin(experiment_path, "pronunciations.txt"), pronunciations)
     
@@ -600,8 +601,8 @@ def run_kws(env, experiment_path, asr_output, vocabulary, pronunciations, keywor
     
     iv_queries = []
     
-    for i, terms in list(enumerate(env.SplitList([pjoin(experiment_path, "iv_queries_%d_of_${JOB_COUNT}.txt" % (i + 1)) for i in range(env["JOB_COUNT"])], iv_query_terms)))[0:to]:
-        iv_queries.append(env.CreateQueries(pjoin(experiment_path, "iv_query_fsts_%d_of_${JOB_COUNT}.tgz" % (i + 1)),
+    for i, terms in list(enumerate(env.SplitList([pjoin(experiment_path, "iv_queries_%d_of_%d.txt" % (i + 1, kws_job_count)) for i in range(to)], iv_query_terms))):
+        iv_queries.append(env.CreateQueries(pjoin(experiment_path, "iv_query_fsts_%d_of_%d.tgz" % (i + 1, kws_job_count)),
                                             [terms, word_symbols, p2p_fst, w2p_fst], NBESTP2P=env["NBESTP2P_IV"]))
     
     oov_queries = env.CreateQueries(pjoin(experiment_path, "oov_query_fsts.tgz"), [oov_query_terms, word_symbols, p2p_fst, w2p_fst], NBESTP2P=env["NBESTP2P_OOV"])
@@ -609,7 +610,7 @@ def run_kws(env, experiment_path, asr_output, vocabulary, pronunciations, keywor
     ivs = []
     oovs = []
     
-    for lattices in asr_output[0:to]:
+    for lattices in asr_output:
         
         i, j = [int(x) for x in re.match(r".*?(\d+)_of_(\d+).*$", lattices.rstr()).groups()]
 
@@ -654,8 +655,8 @@ def run_kws(env, experiment_path, asr_output, vocabulary, pronunciations, keywor
 
     dt = env.ApplyRescaledDTPipe(pjoin(experiment_path, "dt.kwslist.xml"), [devinfo, database_file, ecf_file, merged])
 
-    #kws_score = env.BabelScorer([pjoin(experiment_path, "score.%s" % x) for x in ["alignment.csv", "bsum.txt", "sum.txt"]],
-    #                            [ecf_file, rttm_file, keyword_file, dt])
+    kws_score = env.BabelScorer([pjoin(experiment_path, "score.%s" % x) for x in ["alignment.csv", "bsum.txt", "sum.txt"]],
+                                [ecf_file, rttm_file, keyword_file, dt])
 
     return merged
 
