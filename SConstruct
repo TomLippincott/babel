@@ -264,10 +264,10 @@ for language, properties in env["LANGUAGES"].iteritems():
             baseline_language_model = env.Glob("${IBM_MODELS}/${BABEL_ID}/${PACK}/models/*.arpabo.gz")[0]
             env.Replace(ACOUSTIC_WEIGHT=properties.get("ACOUSTIC_WEIGHT", .10))
             baseline_asr_output = env.RunASR("work/asr_experiments/${LANGUAGE_NAME}/${PACK}/baseline",
-                                             baseline_vocabulary,
-                                             baseline_pronunciations,
-                                             baseline_language_model,
-                                             TORQUE_RESOURCES=env["TORQUE_RESOURCES"].get(("asr", "words"), {}))
+                                            baseline_vocabulary,
+                                            baseline_pronunciations,
+                                            baseline_language_model,
+                                            TORQUE_RESOURCES=env["TORQUE_RESOURCES"].get(("asr", "words"), {}))
 
             if not properties.get("GRAPHEMIC", False):
                 g2p_model = env.TrainG2P("work/pronunciations/${LANGUAGE_NAME}_${PACK}_${MODEL}_baseline_model_1.txt", baseline_pronunciations)
@@ -276,13 +276,13 @@ for language, properties in env["LANGUAGES"].iteritems():
             
             keyword_file = env.maybe("${DEV_KEYWORD_FILE}")
 
-            baseline_asr_word_error_rate = env.WordErrorRate(
-                ["work/word_error_rates/${LANGUAGE_NAME}/${PACK}/baseline/%s" % x for x in ["babel.sys", "all.ctm", "babel.dtl", "babel.pra", "babel.raw", "babel.sgml"]],
-                [x[0] for x in baseline_asr_output] + env.Glob("${INDUSDB_PATH}/IARPA-babel${BABEL_ID}*/*dev.stm"))
+            # baseline_asr_word_error_rate = env.WordErrorRate(
+            #     ["work/word_error_rates/${LANGUAGE_NAME}/${PACK}/baseline/%s" % x for x in ["babel.sys", "all.ctm", "babel.dtl", "babel.pra", "babel.raw", "babel.sgml"]],
+            #     [x[0] for x in baseline_asr_output] + env.Glob("${INDUSDB_PATH}/IARPA-babel${BABEL_ID}*/*dev.stm"))
             
-            baseline_kws_output = env.RunKWS("work/kws_experiments/${LANGUAGE_NAME}/${PACK}/baseline",
-                                             [x[1] for x in baseline_asr_output], baseline_vocabulary, baseline_pronunciations, env.Glob("${DEV_KEYWORD_FILE}"),
-                                             G2P_MODEL=g2p_model)
+            # baseline_kws_output = env.RunKWS("work/kws_experiments/${LANGUAGE_NAME}/${PACK}/baseline",
+            #                                  [x[1] for x in baseline_asr_output], baseline_vocabulary, baseline_pronunciations, env.Glob("${DEV_KEYWORD_FILE}"),
+            #                                  G2P_MODEL=g2p_model)
 
             word_list = env.WordList("work/word_lists/${LANGUAGE_NAME}_${PACK}.txt", data)
             keywords_for_models = env.KeywordListToModelInput("work/word_lists/${LANGUAGE_NAME}_${PACK}_keywords.txt", keyword_file)
@@ -335,5 +335,5 @@ for language, properties in env["LANGUAGES"].iteritems():
 
                 segmented_kws_output = env.RunKWS("work/kws_experiments/${LANGUAGE_NAME}/${PACK}/${MODEL}", [x[1] for x in segmented_asr_output], segmented_vocabulary, segmented_pronunciations, segmented_keywords, G2P_MODEL=g2p_segmented_model)
 
-                cascaded_kws_output = env.RunCascade("work/kws_experiments/${LANGUAGE_NAME}/${PACK}/${MODEL}_cascaded",
-                                                     baseline_kws_output, segmented_kws_output)
+                #cascaded_kws_output = env.RunCascade("work/kws_experiments/${LANGUAGE_NAME}/${PACK}/${MODEL}_cascaded",
+                #                                     baseline_kws_output, segmented_kws_output)

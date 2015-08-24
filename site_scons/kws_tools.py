@@ -549,7 +549,7 @@ def run_kws(env, experiment_path, asr_output, vocabulary, pronunciations, keywor
     
     if not env["RUN_KWS"]:
         return None
-    kws_job_count = 1
+    kws_job_count = 10
     to = 1 if env["DEBUG"] else kws_job_count
     
     pronunciations = env.AddWordBreaks(pjoin(experiment_path, "pronunciations.txt"), pronunciations)
@@ -640,8 +640,8 @@ def run_kws(env, experiment_path, asr_output, vocabulary, pronunciations, keywor
         oovs.append(env.PerformSearch(pjoin(experiment_path, "OOV_results", "result.%d_of_%d.txt" % (i, j)),
                                       [sorted_expanded_index_fst, phone_symbols, expanded_index_symbols, fst_header, oov_queries]))
         
-    iv_xml = env.Glob("${IBM_MODELS}/${BABEL_ID}/${PACK}/*-resources/kws-resources-IndusDB.*/template.iv.xml")[0]
-    oov_xml = env.Glob("${IBM_MODELS}/${BABEL_ID}/${PACK}/*-resources/kws-resources-IndusDB.*/template.oov.xml")[0]
+    iv_xml = env.one_file("${IBM_MODELS}/${BABEL_ID}/${PACK}/*-resources/kws-resources-IndusDB.*/template.iv.xml")
+    oov_xml = env.one_file("${IBM_MODELS}/${BABEL_ID}/${PACK}/*-resources/kws-resources-IndusDB.*/template.oov.xml")
 
     iv_comb = env.CombineResults([pjoin(experiment_path, x) for x in ["iv_temp_1.txt", "iv_temp_2.txt", "iv.xml"]],
                                  [iv_xml] + ivs, NIST_EXPID_CORPUS=expid, LANGUAGE_TEXT=env.subst("${LANGUAGE_NAME}").replace("_", ""))
@@ -655,8 +655,8 @@ def run_kws(env, experiment_path, asr_output, vocabulary, pronunciations, keywor
 
     dt = env.ApplyRescaledDTPipe(pjoin(experiment_path, "dt.kwslist.xml"), [devinfo, database_file, ecf_file, merged])
 
-    kws_score = env.BabelScorer([pjoin(experiment_path, "score.%s" % x) for x in ["alignment.csv", "bsum.txt", "sum.txt"]],
-                                [ecf_file, rttm_file, keyword_file, dt])
+    #kws_score = env.BabelScorer([pjoin(experiment_path, "score.%s" % x) for x in ["alignment.csv", "bsum.txt", "sum.txt"]],
+    #                            [ecf_file, rttm_file, keyword_file, dt])
 
     return merged
 
@@ -683,8 +683,6 @@ def run_cascade(env, experiment_path, word_space, morph_space, **kw):
     Outputs: KWS output for cascade
     """
     return None
-
-
 
 
 def TOOLS_ADD(env):
