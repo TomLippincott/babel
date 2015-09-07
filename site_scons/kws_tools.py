@@ -476,7 +476,7 @@ def perform_search(target, source, env):
                 key = fname.split(".")[0]
                 e = codecs.getreader("utf-8")
                 query = ifd.extractfile(fname).read()
-                cmd = env.subst("fstcompose - ${SOURCES[0]} | fstprune -weight=${PRUNE} - | fstrmepsilon | fstprint -isymbols=${SOURCES[1]}  -osymbols=${SOURCES[2]} -  | cat ${SOURCES[3]} - | bin/FsmOp -out-cost - -n-best 50000 -gen | perl ${CN_KWS_SCRIPTS}/process.1.pl - 100 1e-40 %s | sort -k 5 -gr | perl ${CN_KWS_SCRIPTS}/clean_result.words.pl -" % key, source=source, target=target)
+                cmd = env.subst("fstcompose - ${SOURCES[0]} | fstprune -weight=${PRUNE} - | fstrmepsilon | fstprint -isymbols=${SOURCES[1]}  -osymbols=${SOURCES[2]} -  | cat ${SOURCES[3]} - | bin/FsmOp -out-cost - -n-best 50000 -gen | perl bin/process.1.pl - 100 1e-40 %s | sort -k 5 -gr | perl ${CN_KWS_SCRIPTS}/clean_result.words.pl -" % key, source=source, target=target)
                 pid = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
                 out, err = pid.communicate(query)
                 if not re.match(r"^\s*$", out):
@@ -549,11 +549,11 @@ def run_kws(env, experiment_path, asr_output, vocabulary, pronunciations, keywor
     
     if not env["RUN_KWS"]:
         return None
-    kws_job_count = 10
+    kws_job_count = env["KWS_JOB_COUNT"]
     to = 1 if env["DEBUG"] else kws_job_count
     
     pronunciations = env.AddWordBreaks(pjoin(experiment_path, "pronunciations.txt"), pronunciations)
-    
+
     database_file = env.Glob('${DATABASE_FILE}')[0]
     ecf_file = env.Glob("${ECF_FILE}")[0]
     rttm_file = env.Glob("${RTTM_FILE}")[0]
@@ -603,9 +603,10 @@ def run_kws(env, experiment_path, asr_output, vocabulary, pronunciations, keywor
     
     for i, terms in list(enumerate(env.SplitList([pjoin(experiment_path, "iv_queries_%d_of_%d.txt" % (i + 1, kws_job_count)) for i in range(to)], iv_query_terms))):
         iv_queries.append(env.CreateQueries(pjoin(experiment_path, "iv_query_fsts_%d_of_%d.tgz" % (i + 1, kws_job_count)),
-                                            [terms, word_symbols, p2p_fst, w2p_fst], NBESTP2P=env["NBESTP2P_IV"]))
+                                            [terms, word_symbols, p2p_fst, w2p_fst], NBESTP2P=env["NBESTP2P_IV"], TORQUE_MEMORY="16000mb"))
     
-    oov_queries = env.CreateQueries(pjoin(experiment_path, "oov_query_fsts.tgz"), [oov_query_terms, word_symbols, p2p_fst, w2p_fst], NBESTP2P=env["NBESTP2P_OOV"])
+    oov_queries = env.CreateQueries(pjoin(experiment_path, "oov_query_fsts.tgz"), [oov_query_terms, word_symbols, p2p_fst, w2p_fst], 
+                                    NBESTP2P=env["NBESTP2P_OOV"], TORQUE_MEMORY="16000mb")
     
     ivs = []
     oovs = []
@@ -614,7 +615,7 @@ def run_kws(env, experiment_path, asr_output, vocabulary, pronunciations, keywor
         
         i, j = [int(x) for x in re.match(r".*?(\d+)_of_(\d+).*$", lattices.rstr()).groups()]
 
-        index = env.MakeIndex(pjoin(experiment_path, "index_%d_of_%d.fsm" % (i, j)), lattices)
+        index = env.MakeIndex(pjoin(experiment_path, "index_%d_of_%d.fsm" % (i, j)), lattices, TORQUE_MEMORY="16000mb")
         
         sym, bsym = env.IndexToSymbolTables([pjoin(experiment_path, "index_%d_of_%d_sorted.%s" % (i, j, x)) for x in ["sym", "bsym"]],
                                             [index, keyword_symbols])
@@ -635,11 +636,13 @@ def run_kws(env, experiment_path, asr_output, vocabulary, pronunciations, keywor
                                                    [expanded_index_fst[0], env.Value("ilabel")])
 
         ivs.append(env.PerformSearch(pjoin(experiment_path, "IV_results", "result.%d_of_%d.txt" % (i, j)),
-                                     [sorted_expanded_index_fst, phone_symbols, expanded_index_symbols, fst_header, iv_queries]))
-        
+                                     [sorted_expanded_index_fst, phone_symbols, expanded_index_symbols, fst_header, iv_queries],
+                                     TORQUE_MEMORY="16000mb"))
+
         oovs.append(env.PerformSearch(pjoin(experiment_path, "OOV_results", "result.%d_of_%d.txt" % (i, j)),
-                                      [sorted_expanded_index_fst, phone_symbols, expanded_index_symbols, fst_header, oov_queries]))
-        
+                                      [sorted_expanded_index_fst, phone_symbols, expanded_index_symbols, fst_header, oov_queries],
+                                      TORQUE_MEMORY="16000mb"))
+
     iv_xml = env.one_file("${IBM_MODELS}/${BABEL_ID}/${PACK}/*-resources/kws-resources-IndusDB.*/template.iv.xml")
     oov_xml = env.one_file("${IBM_MODELS}/${BABEL_ID}/${PACK}/*-resources/kws-resources-IndusDB.*/template.oov.xml")
 
@@ -655,8 +658,8 @@ def run_kws(env, experiment_path, asr_output, vocabulary, pronunciations, keywor
 
     dt = env.ApplyRescaledDTPipe(pjoin(experiment_path, "dt.kwslist.xml"), [devinfo, database_file, ecf_file, merged])
 
-    #kws_score = env.BabelScorer([pjoin(experiment_path, "score.%s" % x) for x in ["alignment.csv", "bsum.txt", "sum.txt"]],
-    #                            [ecf_file, rttm_file, keyword_file, dt])
+    kws_score = env.BabelScorer([pjoin(experiment_path, "score.%s" % x) for x in ["alignment.csv", "bsum.txt", "sum.txt"]],
+                                [ecf_file, rttm_file, keyword_file, dt])
 
     return merged
 
@@ -699,7 +702,7 @@ def TOOLS_ADD(env):
         "WordPronounceSymTable" : Builder(action=word_pronounce_sym_table), 
         "CleanPronounceSymTable" : Builder(action=clean_pronounce_sym_table),
         "SplitList" : Builder(action=split_list),
-        "CreateQueries" : Builder(action=create_queries),
+        "CreateQueries" : Builder(action=Action(create_queries, varlist=["NBESTP2P"])),
         "MakeIndex" : Builder(action=make_index),
         "IndexToSymbolTables" : Builder(action=index_to_symbol_tables),
         "ExpandPhoneIndex" : Builder(action=expand_phone_index),

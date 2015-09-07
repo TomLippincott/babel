@@ -63,7 +63,7 @@ vars.AddVariables(
     
     # these variables determine how parallelism is exploited    
     ("LONG_RUNNING", "Builders that should be considered for parallel execution, in tuples of form (name, #targets, #sources, combine)", []),
-    ("JOB_COUNT", "How many jobs to split a single experiment into", 1),
+    ("KWS_JOB_COUNT", "How many jobs to split a single KWS experiment into", 8),
     BoolVariable("THREADED_SUBMIT_NODE", "Run parallel jobs using multiple cores", False),
     BoolVariable("TORQUE_SUBMIT_NODE", "Run parallel jobs using Torque (e.g. invoking scons on yetisubmit.cc.columbia.edu)", False),
 
@@ -159,7 +159,7 @@ vars.AddVariables(
     ("CMS_PATH", "", "${IBM_MODELS}/${BABEL_ID}/${PACK}/adapt/cms"),
     ("FMLLR_PATH", "", "${IBM_MODELS}/${BABEL_ID}/${PACK}/adapt/fmllr"),
     ("ECF_FILE", "", "${INDUSDB_PATH}/*babel${BABEL_ID}*conv-dev/*.scoring.ecf.xml"),
-    ("DEV_KEYWORD_FILE", "File pattern for development keyword list", "${INDUSDB_PATH}/*babel${BABEL_ID}*conv-dev.kwlist2.xml"),
+    ("DEV_KEYWORD_FILE", "File pattern for development keyword list", "${INDUSDB_PATH}/*babel${BABEL_ID}*conv-dev.kwlist.xml"),
     ("EVAL_KEYWORD_FILE", "File pattern for evaluation keyword list", "data/eval_keyword_lists/*babel${BABEL_ID}*conv-eval.kwlist*.xml"),
     ("RTTM_FILE", "File pattern for the MIT audio segmentation", "${INDUSDB_PATH}/*babel${BABEL_ID}*conv-dev/*mit*rttm"),
 )
@@ -276,14 +276,14 @@ for language, properties in env["LANGUAGES"].iteritems():
             
             keyword_file = env.maybe("${DEV_KEYWORD_FILE}")
 
-            # baseline_asr_word_error_rate = env.WordErrorRate(
-            #     ["work/word_error_rates/${LANGUAGE_NAME}/${PACK}/baseline/%s" % x for x in ["babel.sys", "all.ctm", "babel.dtl", "babel.pra", "babel.raw", "babel.sgml"]],
-            #     [x[0] for x in baseline_asr_output] + env.Glob("${INDUSDB_PATH}/IARPA-babel${BABEL_ID}*/*dev.stm"))
+            baseline_asr_word_error_rate = env.WordErrorRate(
+                 ["work/word_error_rates/${LANGUAGE_NAME}/${PACK}/baseline/%s" % x for x in ["babel.sys", "all.ctm", "babel.dtl", "babel.pra", "babel.raw", "babel.sgml"]],
+                 [x[0] for x in baseline_asr_output] + env.Glob("${INDUSDB_PATH}/IARPA-babel${BABEL_ID}*/*dev.stm"))
             
-            # baseline_kws_output = env.RunKWS("work/kws_experiments/${LANGUAGE_NAME}/${PACK}/baseline",
-            #                                  [x[1] for x in baseline_asr_output], baseline_vocabulary, baseline_pronunciations, env.Glob("${DEV_KEYWORD_FILE}"),
-            #                                  G2P_MODEL=g2p_model)
-
+            baseline_kws_output = env.RunKWS("work/kws_experiments/${LANGUAGE_NAME}/${PACK}/baseline",
+                                             [x[1] for x in baseline_asr_output], baseline_vocabulary, baseline_pronunciations, env.Glob("${DEV_KEYWORD_FILE}"),
+                                             G2P_MODEL=g2p_model)
+            
             word_list = env.WordList("work/word_lists/${LANGUAGE_NAME}_${PACK}.txt", data)
             keywords_for_models = env.KeywordListToModelInput("work/word_lists/${LANGUAGE_NAME}_${PACK}_keywords.txt", keyword_file)
             morfessor, morfessor_model = env.TrainMorfessor(["work/morfessor/${LANGUAGE_NAME}_${PACK}.txt", "work/morfessor/${LANGUAGE_NAME}_${PACK}.model"], word_list)
